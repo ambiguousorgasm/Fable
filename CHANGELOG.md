@@ -4,6 +4,21 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-17 — Phase 1: deterministic core + event log (in-memory)
+
+First code. Built the smallest working deterministic substrate; all six phase-1 acceptance contracts pass (24 tests total). No models, agents, UI, or persistence yet — by design (IMPLEMENTATION_PLAN phase 1 non-goals).
+
+- **Event model** (`events.py`): frozen `Event` and `Commitment` dataclasses tracking `schemas/event.schema.json`; `to_dict()` keys match the schema's required set exactly. Validates channel, visibility (level or per-member map), and audience uniqueness. `ProjectedEvent` is the per-entity view (CORE §6.3 belief-store seed).
+- **Append-only log** (`event_log.py`): `EventLog.append` is the single chokepoint — it assigns the monotonic `sequence`, a uuid `id`, and a UTC `timestamp` (never caller-supplied), and stores a frozen event. Reads return tuples so history can't be mutated. `project_for(entity)` filters by audience and renders content-vs-metadata (the CORE §6.4 access matrix; non-audience entities are excluded entirely).
+- **Determinism boundary made structural** (CORE §1.3 principle 1): mechanical-outcome types (`dice_roll`, `resolution`) are refused by `append` unless they carry a module-private capability held only by the dice service and rules engine. A faked roll authored directly raises `DeterminismBoundaryError`.
+- **Dice service** (`dice.py`): logged, auditable randomness (CORE §7.2); injectable RNG for deterministic tests; every roll is a `dice_roll` event.
+- **Minimal rules engine** (`rules.py`): the cold adjudicator slice — `resolve_check` rolls 3d6+Skill vs TN via the dice service, reads the FABLE band (`fable_engine.md` §5), and logs a `resolution` event linked to its dice event via `derived_from`. Deliberately excludes Exposure/Effect/Trade/Ledger/Clocks/Edge (later phases).
+- **World-state skeleton** (`world_state.py`): minimal entity container; `position` is fiction-positional (D-002).
+- Package version 0.0.0 → 0.1.0; public API exported from `__init__.py`. Implemented the 6 skipped acceptance placeholders and added `tests/test_phase1_behavior.py`.
+- **Decisions in play:** D-001 (projection is read-time over the single log), D-002 (fiction-positional `position`), and the determinism boundary. **Pending:** SQLite persistence (plan step 6) — the log is in-memory only.
+
+---
+
 ## 2026-06-17 — Resolve D-002: fiction-positional spatial model
 
 Resolved the spatial-model fork toward FABLE's native abstraction: a third option (c) beyond the original range-bands/grid framing.
