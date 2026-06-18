@@ -4,6 +4,20 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Phase 2: access model + commit boundary (in-memory)
+
+Implemented the declaration → consistency-check → bind lifecycle (CORE §6.1) over the Phase 1 log. No new components — this realizes the already-registered fact-extraction/commit pipeline, canon ledger, and override protocol from `COMPONENTS.md`. 11 new tests (`tests/test_phase2_access.py`); 35 total, all passing.
+
+- **Commit pipeline** (`access.py`): `CommitPipeline.commit` is the sanctioned path for any event carrying commitments — it runs the canon consistency-check before appending, so an improvised declaration cannot silently contradict what players were already told (CORE §6.2 forbidden move). On conflict it raises `CanonConflictError` and appends nothing.
+- **Canon ledger and committed-facts as pure folds over the log** (D-009 option (b)): `committed_facts()` and `canon_ledger()` derive state by folding the event log — no separate materialized store. Consistent with D-001's single-source-of-truth stance; latest commitment per `(subject, predicate)` wins.
+- **"Contradictory" defined operationally** (CORE §6.1 step 3): a candidate conflicts when canon already holds the same `(subject, predicate)` with a *different* value. Structural, not semantic. The check targets *revealed* canon only — hidden committed facts stay revisable (the fluid future, §7.4), so a new commitment may freely supersede a hidden one.
+- **Override escape hatch** (D-008 MVP default): `commit(override=True, reason=...)` bypasses the check and logs an `override`-type event carrying the reason, which the auditor will read as intentional fiat rather than a bug (CORE §3, §6.2). An override without a reason is refused.
+- **Whisper secrecy holds at the commitment level:** a commitment on a whisper rides the Phase 1 audience/visibility projection — the non-audience never sees the content *or* its commitments; a metadata-only recipient learns the event happened but not what was said.
+- Public API extended in `__init__.py` (`CommitPipeline`, `Fact`, `Conflict`, `CanonConflictError`, `committed_facts`, `canon_ledger`, `OVERRIDE_TYPE`).
+- **Decisions in play:** D-007, D-008, D-009 — all still **Open**; the code follows their MVP defaults (structured commitment blocks, not prose extraction; logged override-with-reason; canon ledger as a view). **Pending:** SQLite persistence (plan step 6) — the log is still in-memory.
+
+---
+
 ## 2026-06-17 — Phase 1: deterministic core + event log (in-memory)
 
 First code. Built the smallest working deterministic substrate; all six phase-1 acceptance contracts pass (24 tests total). No models, agents, UI, or persistence yet — by design (IMPLEMENTATION_PLAN phase 1 non-goals).

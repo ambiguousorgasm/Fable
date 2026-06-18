@@ -96,9 +96,9 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-004:** *Resolved* — couple disposition through Edge/Bonds, never a passive modifier and never a separate currency. Defer building it to phase 10, after the rules engine's Edge/Bond/compel surfaces and the EV audit exist.
 - **D-005:** Start with director-picks-next spotlight. Prototype agent bidding only after a cost/latency budget exists.
 - **D-006:** Let the GM puppet walk-on NPCs for MVP; promote recurring NPCs later.
-- **D-007:** Start with GM-emitted structured commitment blocks for reliability; later prototype post-hoc extraction.
-- **D-008:** Do not allow unstructured overrides in MVP. If an override is needed, require an explicit logged override event with author and reason.
-- **D-009:** Implement the canon ledger as a view over committed-and-disclosed events unless performance requires materialization.
+- **D-007:** Start with GM-emitted structured commitment blocks for reliability; later prototype post-hoc extraction. *(Exercised in phase 2: `CommitPipeline.commit` takes structured `Commitment`s directly; no prose-extraction pass exists yet.)*
+- **D-008:** Do not allow unstructured overrides in MVP. If an override is needed, require an explicit logged override event with author and reason. *(Exercised in phase 2: `commit(override=True, reason=...)` logs an `override`-type event and refuses an override with no reason. Author identity / who-may-override still Open.)*
+- **D-009:** Implement the canon ledger as a view over committed-and-disclosed events unless performance requires materialization. *(Exercised in phase 2: `canon_ledger()` is a pure fold over the log, not a materialized store.)*
 
 ---
 
