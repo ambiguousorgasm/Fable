@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fable-table-engine.local/schemas/world_state.schema.json",
+  "title": "FABLE World State Skeleton",
+  "type": "object",
+  "required": [
+    "entities",
+    "scenes",
+    "clocks",
+    "fronts"
+  ],
+  "properties": {
+    "entities": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "scenes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "clocks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "fronts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  },
+  "$defs": {
+    "entity": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "position": {},
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

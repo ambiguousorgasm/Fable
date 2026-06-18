@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fable-table-engine.local/schemas/character_sheet.schema.json",
+  "title": "FABLE Character Sheet Skeleton",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "stats",
+    "resources"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "stats": {
+      "type": "object"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "stance": {
+      "type": "string"
+    },
+    "traits": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+.next/
+dist/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+secrets/
+credentials.json
+config/credentials.json
+*.pem
+*.key
+*.token
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Databases / runtime artifacts
+*.sqlite
+*.sqlite3
+*.db
+logs/
+transcripts/
+runtime/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

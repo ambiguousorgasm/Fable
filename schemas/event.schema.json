@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fable-table-engine.local/schemas/event.schema.json",
+  "title": "FABLE Event",
+  "type": "object",
+  "required": [
+    "id",
+    "sequence",
+    "timestamp",
+    "author",
+    "channel",
+    "audience",
+    "visibility",
+    "type",
+    "content",
+    "commitments",
+    "derived_from"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "author": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "public",
+        "whisper",
+        "ooc",
+        "dice",
+        "system"
+      ]
+    },
+    "audience": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "visibility": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "content",
+            "metadata"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "content",
+              "metadata"
+            ]
+          }
+        }
+      ]
+    },
+    "type": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    },
+    "commitments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commitment"
+      }
+    },
+    "derived_from": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "commitment": {
+      "type": "object",
+      "required": [
+        "subject",
+        "predicate",
+        "value"
+      ],
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "predicate": {
+          "type": "string"
+        },
+        "value": {},
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "revealed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
