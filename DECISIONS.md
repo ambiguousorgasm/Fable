@@ -14,12 +14,14 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Recommendation:** (a) read-time + cache. One source of truth, no desync; caching recovers the speed. Two materialized stores drifting apart reintroduces omniscience-style bugs by the back door.
 **Impact if changed:** Context assembly, event-log schema, caching layer.
 
-## D-002 · Spatial model: abstract range bands vs. coordinates/grid · Open · 2026-06-17
+## D-002 · Spatial model · Resolved · 2026-06-17
 **Question:** How is position/distance represented in world state?
-**Options:** (a) Abstract range bands (close/near/far). (b) Coordinates or a grid.
-**Recommendation:** Match FABLE's native spatial abstraction; the architecture is agnostic. Decide once FABLE's positioning rules are fixed.
-**Ruleset note (2026-06-17, `fable_engine.md` v4):** FABLE has *no* grid or coordinates. Position is fictional — surfaced mechanically only through the Ledger **Position** category (§10) and the **Ground** cost register (§7), and persisted as **Truths** (§12). This favors (a), or something looser than formal range bands. Still Open pending confirmation; note the perception model (phase 3) and distance queries (scenario B) must then work against fictional/Truth-based position, not metric distance — the "100 ft to the tower" example becomes a committed Truth, not a coordinate.
-**Impact:** World state, rules engine, perception model, distance-query handling.
+**Options:** (a) Abstract range bands (close/near/far). (b) Coordinates or a grid. (c) Fiction-positional — position as Truths, no measured space.
+**Decision:** (c) Fiction-positional, following FABLE's native abstraction. Position is a fictional fact persisted as **Truths** (`fable_engine.md` §12) within the scene/zone graph; there is no coordinate grid (rejects (b)) and no formal range-band system (looser than (a)). Proximity surfaces mechanically only through the Ledger **Position** category (§10) and the **Ground** cost register (§7); coarse qualitative tags (adjacent / near / far) are descriptive adjudication aids, not measured quantities. A distance the GM states in fiction ("a hundred feet off") is committed as a relational Truth and enforced by Truth-consistency + logged traversal, not by arithmetic.
+**Determinism-boundary note:** position stays code-owned (CORE principle 1). The engine authoritatively owns which position Truths exist, whether a proposed action contradicts one, and whether a traversal has been logged — it simply does not compute metric distance. "Code owns positions" means code owns the *position Truths and their consistency*, not a coordinate system.
+**Rationale:** FABLE is fiction-positional; imposing a grid or a band system would be a spatial subsystem the ruleset doesn't use and would fight invariant 18. The spatial-consistency success criterion (CORE §13) is preserved — it enforces via Truth/canon non-contradiction and the perception/traversal model rather than coordinates.
+**Relates to:** D-003 (positioning queries become reads/authoring of position Truths), the perception model (phase 3, operating over zones + relational Truths), and CORE §6/§9.B (the "100 feet to the tower" frame, now an authored Truth).
+**Impact:** World state schema (`entity.position`), rules engine, perception model, distance-query handling.
 
 ## D-003 · Positioning queries: free OOC read vs. in-character assessment · Open · 2026-06-17
 **Question:** Is "how far am I from X?" a free clarification, or an in-character action? And is the map itself fogged?
@@ -89,7 +91,7 @@ When a decision is resolved, change its status and date, record the choice, and 
 These are implementation defaults used until a decision is formally resolved. They are not final design resolutions unless moved into `Resolved` with an updated decision record.
 
 - **D-001:** Implement belief stores as read-time projections from the event log, with optional cache.
-- **D-002:** Use abstract range bands for the MVP unless the FABLE rules implementation demands coordinates.
+- **D-002:** *Resolved* — fiction-positional: position as Truths within the zone graph, no grid and no formal band system. Proximity is qualitative, feeding Ledger Position / Ground.
 - **D-003:** Treat routine positioning queries as free OOC clarification for MVP; later support IC assessment for exploration-heavy scenes.
 - **D-004:** *Resolved* — couple disposition through Edge/Bonds, never a passive modifier and never a separate currency. Defer building it to phase 10, after the rules engine's Edge/Bond/compel surfaces and the EV audit exist.
 - **D-005:** Start with director-picks-next spotlight. Prototype agent bidding only after a cost/latency budget exists.
@@ -102,5 +104,6 @@ These are implementation defaults used until a decision is formally resolved. Th
 
 ## Resolved
 
+- **D-002** · Spatial model → fiction-positional (position as Truths in the zone graph; no grid, no formal band system) · 2026-06-17.
 - **D-004** · Disposition→mechanics coupling → through FABLE's native Edge/Bonds; no passive modifier, no separate "Strings" currency · 2026-06-17.
 - **D-010** · Proposal/action queue → transient, non-authoritative buffer (not events on the log) · 2026-06-17.

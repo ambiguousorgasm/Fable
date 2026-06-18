@@ -144,7 +144,7 @@ Authoritative state. No model owns these; services read and write them.
 - **Depended-on-by:** Belief-store projections, context assembly, auditor, plot-manager (divergence/interest), interface, dice service.
 
 ### World state
-- **Purpose:** Structured, authoritative present state: entities, positions, conditions, resources, clocks/fronts, scene/zone graph, terrain.
+- **Purpose:** Structured, authoritative present state: entities, positions, conditions, resources, clocks/fronts, scene/zone graph, terrain. Position is **fiction-positional** — Truths within the zone graph, not coordinates and not a formal band system (D-002).
 - **Depended-on-by:** Rules engine, perception model, context assembly, auditor, GM, fact-extraction.
 
 ### Canon ledger

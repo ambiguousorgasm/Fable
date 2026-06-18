@@ -192,7 +192,7 @@ The four canonical scenarios, showing that the audience field does all the work.
 
 ### 7.1 The perception model (build this first and carefully)
 
-Secrets, fog of war, dramatic irony, and overheard whispers all depend on one hard computation: *what could this entity sense?* Witnessing is a judgment grounded in scene state — presence, line of sight, audibility, lighting, positioning. The audience of an event is not just its intended recipients; it is the intended recipients **plus anyone the perception model says could perceive it.** A whisper in an empty room reaches only its targets; the same whisper with an enemy in the adjacent square may yield a derived `may-have-overheard` event to the NPC-manager. Get this right and differential information is automatic; get it wrong and secrets leak in exactly the way the whole design exists to prevent.
+Secrets, fog of war, dramatic irony, and overheard whispers all depend on one hard computation: *what could this entity sense?* Witnessing is a judgment grounded in scene state — presence, line of sight, audibility, lighting, positioning. The audience of an event is not just its intended recipients; it is the intended recipients **plus anyone the perception model says could perceive it.** A whisper in an empty room reaches only its targets; the same whisper with an enemy positioned close (within earshot in the fiction) may yield a derived `may-have-overheard` event to the NPC-manager. Get this right and differential information is automatic; get it wrong and secrets leak in exactly the way the whole design exists to prevent.
 
 ### 7.2 Cold adjudication / warm narration
 
@@ -225,10 +225,10 @@ Live validation gates. Because world state is deterministic, the auditor has gro
 
 ## 8. Data model sketch
 
-Concrete enough to begin schema design; not final. These are partially realized as JSON Schema skeletons in `schemas/` (`event`, `world_state`, `character_sheet`), with fields deliberately left open where a decision is unresolved (e.g. `position` is untyped pending D-002). The schemas are skeletons that track this sketch, not an independent source of truth — reconcile them with this section when either changes.
+Concrete enough to begin schema design; not final. These are partially realized as JSON Schema skeletons in `schemas/` (`event`, `world_state`, `character_sheet`), with fields deliberately left open where a decision is unresolved, and tightened as decisions resolve (e.g. `entity.position` was typed once D-002 fixed the spatial model as fiction-positional). The schemas are skeletons that track this sketch, not an independent source of truth — reconcile them with this section when either changes.
 
 - **Event log** (append-only): `id, sequence, timestamp, author, channel, audience[], visibility, type, content, commitments[], derived_from[]`.
-- **World state:** entities (characters, objects) with positions, conditions, resources; the scene/zone graph and terrain; clocks and fronts. Spatial representation per FABLE's native abstraction (range bands vs. grid — see Open Decisions).
+- **World state:** entities (characters, objects) with positions, conditions, resources; the scene/zone graph and terrain; clocks and fronts. **Spatial model is fiction-positional (D-002):** position is a fictional fact persisted as **Truths** within the scene/zone graph — no coordinate grid and no formal range-band system. Coarse qualitative proximity (adjacent / near / far) is a descriptive adjudication aid feeding Ledger **Position** and the perception model, not a measured quantity. A distance stated in fiction ("a hundred feet off") is committed as a relational Truth and enforced by Truth-consistency plus logged traversal — never by coordinate arithmetic.
 - **Character sheet:** FABLE character anatomy (Concept, Skills 0–4, Traits, Bonds, Drive, Question, Gear) plus the Stress track, Scars, and Edge. Mechanical truth, owned by the core (`fable_engine.md` §4, §13–14).
 - **Canon ledger:** the immutable set of revealed, committed facts. May be implemented as a view over committed+disclosed events, but is conceptually a distinct, protected boundary.
 - **Belief store (derived):** per-agent projection over the event log; cached, never authoritative.
@@ -279,7 +279,6 @@ The two phases most responsible for how *lifelike* the result feels — and leas
 These are tracked as a living log in `DECISIONS.md` (open and resolved, each with options, recommendation, rationale, and date). `DECISIONS.md` is authoritative for their status; the list below is only a CORE-side index of what is currently unresolved:
 
 - Belief store: read-time projection vs. write-time materialization.
-- Spatial model: abstract range bands vs. coordinates/grid.
 - Positioning queries: free OOC read vs. in-character assessment; map fog-of-war or not.
 - Spotlight: director-picks-next vs. agent-bidding/raise-hand.
 - NPC management: GM puppets minor NPCs ad hoc vs. dedicated NPC-manager agent.
@@ -307,7 +306,7 @@ See `DECISIONS.md` for the reasoning and any resolutions.
 The system is working when these hold, each operationally testable by transcript/state inspection:
 
 - **Secret-keeping:** a fact shared on a whisper channel never appears in a non-audience agent's context or output (verify by probing those agents).
-- **Spatial/causal consistency:** no agent interacts with an object across a committed distance without a logged traversal; the auditor produces no false negatives on these.
+- **Spatial/causal consistency:** no agent interacts with an object across a committed distance/position (a position Truth) without a logged traversal; the auditor produces no false negatives on these.
 - **No over-rolling:** stakes-free actions resolve without dice, verified by a roll-appropriateness audit.
 - **Invisible improvisation:** plot revisions never contradict the canon ledger, and a re-binding is not detectable from the player-visible transcript.
 - **Differential believability:** teammates demonstrably act on private knowledge, and their public actions are explicable-in-hindsight but not pre-explained to non-audience parties.

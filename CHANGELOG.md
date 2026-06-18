@@ -4,6 +4,17 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-17 — Resolve D-002: fiction-positional spatial model
+
+Resolved the spatial-model fork toward FABLE's native abstraction: a third option (c) beyond the original range-bands/grid framing.
+
+- **Decision:** position is **fiction-positional** — a fictional fact persisted as **Truths** within the scene/zone graph. No coordinate grid (rejects (b)) and no formal range-band system (looser than (a)). Proximity surfaces only through the Ledger **Position** category and the **Ground** cost register; coarse tags (adjacent/near/far) are adjudication aids, not measured quantities. A fiction-stated distance ("a hundred feet off") is a relational Truth enforced by Truth-consistency + logged traversal, not arithmetic.
+- **Determinism boundary:** logged explicitly in D-002 — position stays code-owned, but "code owns positions" means it owns the position *Truths and their consistency*, not a coordinate system. CORE §13 spatial-consistency criterion is preserved (enforced via Truth/canon non-contradiction + the perception/traversal model).
+- Propagated: CORE §8 (world-state spatial model rewritten; removed the dangling "see Open Decisions" pointer), §7.1 (replaced grid-language "adjacent square" with fictional proximity), §13 (criterion now reads "committed distance/position"), §11 (removed from the open-decision index); `COMPONENTS.md` world-state store; `schemas/world_state.schema.json` (`entity.position` typed as zone + descriptor + qualitative proximity + position-Truth refs); `STATUS.md` phase 3. Marked **D-002 Resolved** and updated its MVP default.
+- Relates to D-003 (positioning queries become reads/authoring of position Truths). Precedence re-checked: nothing contradicts CORE; the "100 feet" examples remain valid as authored Truths.
+
+---
+
 ## 2026-06-17 — Resolve D-004: disposition couples through Edge/Bonds
 
 Resolved the disposition→mechanics coupling fork in favor of FABLE's native economy, eliminating the standalone "Strings" mechanic.
