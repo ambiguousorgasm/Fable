@@ -93,11 +93,12 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Relates to:** D-002 (fiction-positional; propagation must stay non-metric), D-003 (map fog-of-war could raise the fidelity bar), the perception model and Scene/perception state.
 **Impact:** Perception model, scene/perception state, world-state zone graph, every event audience.
 
-## D-013 · Per-POV event ordering vs. global sequence exposure · Open · 2026-06-18
-**Question:** `ProjectedEvent` exposes the event log's global monotonic `sequence`. A POV can therefore infer that events it is *not* party to occurred — and roughly how many — from the gaps in the sequence numbers it sees. That is a metadata side-channel against POV partitioning (CORE principle 2): a non-audience entity is supposed to see "nothing," but can detect hidden activity. Surfaced by the phase-3 perception stress pass.
-**Options:** (a) Keep global `sequence`, accept the leak (simplest; arguably tolerable since the sole human is the player and AI POVs may not exploit gaps — but it cuts against differential believability). (b) Project a per-POV *contiguous* index — ordering preserved, global count hidden. (c) Expose an opaque monotonic ordering token that sorts within a POV without revealing absolute position.
-**Recommendation:** Lean (b). Cheapest correct fix, preserves ordering, leaks nothing. Address in context assembly (phase 4), where belief-store ordering is the actual subject and projection semantics are already in play. Tracked by an `xfail` in `tests/test_phase3_perception_stress.py` (`strict=True`, so it flips to a failure the moment it's fixed and the marker can be removed).
-**Relates to:** D-001 (read-time projection), the phase-3 perception model (which surfaced it), phase 4 context assembly (where it should be fixed).
+## D-013 · Per-POV event ordering vs. global sequence exposure · Resolved · 2026-06-18
+**Question:** `ProjectedEvent` exposed the event log's global monotonic `sequence`. A POV could therefore infer that events it is *not* party to occurred — and roughly how many — from the gaps in the sequence numbers it sees. That is a metadata side-channel against POV partitioning (CORE principle 2): a non-audience entity is supposed to see "nothing," but could detect hidden activity. Surfaced by the phase-3 perception stress pass.
+**Options:** (a) Keep global `sequence`, accept the leak. (b) Project a per-POV *contiguous* index — ordering preserved, global count hidden. (c) Expose an opaque monotonic ordering token that sorts within a POV without revealing absolute position.
+**Decision:** (b), implemented in phase 4. `EventLog.project_for` now sets `ProjectedEvent.sequence` to the event's position in *that POV's* projection (contiguous 0, 1, 2, …); the log's global sequence is unchanged and `id` remains the cross-POV identity. Ordering is preserved and no evidence of hidden events leaks. The phase-3 `xfail` regression test (`test_nonaudience_pov_cannot_infer_hidden_event_count`) is now a normal passing test.
+**Rationale:** Cheapest correct fix; preserves ordering; leaks nothing. Resolved in context assembly because that is where projection semantics and belief-store ordering are the subject. Consistent with D-001 (single source, derived on read).
+**Relates to:** D-001 (read-time projection), the phase-3 perception model (which surfaced it), phase 4 context assembly (where it was fixed).
 **Impact:** `ProjectedEvent`, `event_log.project_for`, context assembly, every belief-store consumer.
 
 ## MVP Implementation Defaults
@@ -114,7 +115,7 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-008:** Do not allow unstructured overrides in MVP. If an override is needed, require an explicit logged override event with author and reason. *(Exercised in phase 2: `commit(override=True, reason=...)` logs an `override`-type event and refuses an override with no reason. Author identity / who-may-override still Open.)*
 - **D-009:** Implement the canon ledger as a view over committed-and-disclosed events unless performance requires materialization. *(Exercised in phase 2: `canon_ledger()` is a pure fold over the log, not a materialized store.)*
 - **D-012:** Thin zone-based propagation — binary open/closed connections, whole-zone audibility, one-hop loud carry, lit/dark line of sight, closeness Truths for whisper. *(Built in phase 3; stress-tested. Overhears degrade to a vague hint (fail-safe under-disclosure); richer attenuation/occlusion and "fully overheard content" deferred.)*
-- **D-013:** Current de-facto behavior is option (a) — the global `sequence` is exposed in projections (the unfixed leak). Intended fix is (b), a per-POV contiguous index, in phase 4.
+- **D-013:** *Resolved* — per-POV contiguous index in `project_for` (option (b)); the global-`sequence` side-channel is closed.
 
 ---
 
@@ -123,3 +124,4 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-002** · Spatial model → fiction-positional (position as Truths in the zone graph; no grid, no formal band system) · 2026-06-17.
 - **D-004** · Disposition→mechanics coupling → through FABLE's native Edge/Bonds; no passive modifier, no separate "Strings" currency · 2026-06-17.
 - **D-010** · Proposal/action queue → transient, non-authoritative buffer (not events on the log) · 2026-06-17.
+- **D-013** · Per-POV event ordering → per-POV contiguous index in `project_for`; global-`sequence` side-channel closed · 2026-06-18.

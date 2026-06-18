@@ -156,6 +156,10 @@ class ProjectedEvent:
     At `content` level the entity sees everything; at `metadata` level it knows
     the event happened, by whom, and on what channel, but `content` is None and
     `commitments` are withheld.
+
+    `sequence` is the event's position in *this entity's* projection (contiguous
+    0, 1, 2, …), not the log's global sequence — so a POV cannot infer hidden
+    activity from gaps (D-013). Use `id` for cross-POV identity.
     """
 
     sequence: int

@@ -14,6 +14,7 @@ from .access import (
     canon_ledger,
     committed_facts,
 )
+from .context import Belief, BeliefStore, ContextAssembler
 from .dice import DiceResult, DiceService
 from .event_log import EventLog
 from .events import (
@@ -33,6 +34,7 @@ from .perception import (
     derive_overhears,
     perceivers,
     perception_map,
+    perceptible_entities,
 )
 from .rules import Band, CheckResult, RulesEngine, band_for_margin
 from .world_state import Entity, WorldState
@@ -41,12 +43,15 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Band",
+    "Belief",
+    "BeliefStore",
     "CHANNELS",
     "CanonConflictError",
     "CheckResult",
     "CommitPipeline",
     "Commitment",
     "Conflict",
+    "ContextAssembler",
     "DeterminismBoundaryError",
     "DiceResult",
     "DiceService",
@@ -70,5 +75,6 @@ __all__ = [
     "derive_overhears",
     "perceivers",
     "perception_map",
+    "perceptible_entities",
     "__version__",
 ]

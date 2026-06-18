@@ -230,17 +230,13 @@ def test_entity_with_no_position_perceives_nothing_and_is_never_perceived():
     assert perceivers(scene, origin="parlor", actor="p1", stimulus=Stimulus(volume="loud")) == set()
 
 
-# === FINDING: global sequence side-channel (access-model leak) =============
+# === FINDING (now fixed in phase 4, D-013): sequence side-channel ==========
 
 
-@pytest.mark.xfail(
-    reason="Known leak (surfaced by this pass): ProjectedEvent exposes the global "
-    "`sequence`, so a non-audience POV can infer that hidden events occurred from "
-    "the gaps. Fix is per-POV ordering in the projection (phase-2/access concern), "
-    "not perception. Tracked for follow-up.",
-    strict=True,
-)
 def test_nonaudience_pov_cannot_infer_hidden_event_count():
+    """Regression for D-013. Surfaced by this stress pass as an xfail; fixed in
+    phase 4 by giving `project_for` a per-POV contiguous index. A non-audience
+    POV's view must be densely indexed, leaking no evidence of hidden events."""
     w = _world()
     w.place("p1", "parlor")
     w.place("tm1", "parlor")

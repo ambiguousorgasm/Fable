@@ -160,6 +160,35 @@ def perceivers(scene: Scene, *, origin: str, actor: str, stimulus: Stimulus) -> 
     return set(perception_map(scene, origin=origin, actor=actor, stimulus=stimulus))
 
 
+def perceptible_entities(
+    scene: Scene,
+    observer: str,
+    *,
+    stimulus: Stimulus = Stimulus(modality="audiovisual", volume="normal"),
+) -> set[str]:
+    """Entities the observer could currently sense (its ambient situation).
+
+    Composed from the same rules that decide who overhears or sees an event:
+    entity ``E`` is perceptible to ``observer`` iff the observer would perceive
+    an ambient stimulus ``E`` gives off from ``E``'s zone. Defaults to an
+    audiovisual, normal-volume stimulus — co-present entities (by sound) plus
+    anyone visible in a lit zone reachable by line of sight. Pure read.
+    """
+    world = scene.world
+    if world.zone_of(observer) is None:
+        return set()
+    out: set[str] = set()
+    for entity in world.entities.values():
+        if entity.id == observer:
+            continue
+        zone = world.zone_of(entity.id)
+        if zone is None or zone not in world.zones:
+            continue
+        if observer in perception_map(scene, origin=zone, actor=entity.id, stimulus=stimulus):
+            out.add(entity.id)
+    return out
+
+
 def _hint(modalities: set[str], volume: str, same_zone: bool) -> str:
     where = "nearby" if same_zone else "from another area"
     parts: list[str] = []

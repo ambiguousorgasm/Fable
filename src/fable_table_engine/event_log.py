@@ -112,6 +112,12 @@ class EventLog:
         Events the entity is not in the audience of are excluded entirely; the
         rest are rendered at the entity's visibility level (content vs metadata).
         This is the read-time projection that a belief store is built on.
+
+        The projection's `sequence` is a *per-POV contiguous index* (0, 1, 2, …
+        in this entity's own view), not the log's global sequence. Exposing the
+        global sequence would let a POV infer that events it isn't party to
+        occurred — and how many — from the gaps; the contiguous index preserves
+        ordering while leaking nothing about hidden activity (D-013).
         """
         projected: list[ProjectedEvent] = []
         for event in self._events:
@@ -121,7 +127,7 @@ class EventLog:
             is_content = level == "content"
             projected.append(
                 ProjectedEvent(
-                    sequence=event.sequence,
+                    sequence=len(projected),
                     id=event.id,
                     timestamp=event.timestamp,
                     author=event.author,

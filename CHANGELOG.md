@@ -4,6 +4,17 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Phase 4: context assembly + D-013 fix (in-memory)
+
+Per-POV view construction (CORE §6.3/§6.4): every agent acts from a belief store derived on read from the single event log (D-001). 9 new tests (`tests/test_phase4_context.py`); 70 total, all passing.
+
+- **`ContextAssembler` / `BeliefStore`** (`context.py`): `belief_store(pov)` returns the POV's projected events, the facts it `beliefs` (folded *only* from commitments it saw at content level — never the global canon, so a fact revealed in a scene the POV wasn't in cannot leak into its beliefs, CORE §7.1), and the entities it can currently sense (`perceptible`, via the perception model when a `Scene` is supplied). Frozen, derived, never authoritative.
+- **Resolved D-013** — `EventLog.project_for` now emits a per-POV *contiguous* index as `ProjectedEvent.sequence` instead of the log's global sequence, closing the side-channel by which a non-audience POV could infer hidden-event counts from the gaps. The log's global sequence and event `id` are unchanged. The phase-3 `xfail` is now a normal passing regression test.
+- **Demonstrated differential information:** two POVs assembled from one log hold divergent events and beliefs (the substrate for the differential-believability success criterion); an overhearer's assembled context carries the vague perception, never the secret fact.
+- **Scope:** persona (phase 6), disposition (phase 10), and retrieved memory are deliberately omitted — they slot onto `BeliefStore` later without changing the projection seam. Audience derivation (intended + perceived) stays at commit time (`derive_overhears`); the beat loop (phase 7) will be the chokepoint that runs derive-then-commit. **Pending:** SQLite persistence.
+
+---
+
 ## 2026-06-18 — Phase 3: perception stress-test pass
 
 Adversarial pass over the load-bearing wall before building on it (CORE §13). 14 new tests (`tests/test_phase3_perception_stress.py`); 60 passing + 1 xfail.
