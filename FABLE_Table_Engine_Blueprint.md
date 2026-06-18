@@ -286,6 +286,8 @@ These are tracked as a living log in `DECISIONS.md` (open and resolved, each wit
 - Override authority: who may invoke it, and how it is surfaced and logged.
 - Canon ledger: separate store vs. a view over committed-and-disclosed events.
 - Disposition-delta recognition: deterministic rule table vs. model-proposed deltas (the disposition engine is the authoritative writer either way).
+- Generative scene imagery: text + voice only vs. an impressionistic per-scene AI image (interface phase; §12).
+- Configurable seats: the fixed one-human shape vs. human/AI in any role and multi-participant (§12 multi-human extension).
 
 See `DECISIONS.md` for the reasoning and any resolutions.
 

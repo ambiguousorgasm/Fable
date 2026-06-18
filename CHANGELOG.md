@@ -4,6 +4,16 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Opened D-014 (scene imagery) and D-015 (configurable seats)
+
+Captured two forward-looking feature ideas as open decisions rather than building them (brainstorming is not canon). Both are anticipated by CORE §12, so neither contradicts the spec.
+
+- **D-014 — generative scene imagery:** optional impressionistic per-scene AI image at the interface phase (11). Recorded the two load-bearing constraints if adopted — prompt from the player's belief store (not GM hidden state) so it can't leak secrets (principle 2), and seed from committed facts / keep it impressionistic so it can't silently contradict canon (principle 4).
+- **D-015 — configurable seats:** generalize the fixed one-human-player shape to human/AI in any role, plus multi-participant (the §12 multi-human extension). Recommends a role-agnostic participant/seat abstraction at phases 6–7 (so the human/AI and GM/player distinctions are never hardcoded), with multi-client networking / auth / concurrency deferred to the interface phase.
+- CORE §11 open-decision index updated to reference both.
+
+---
+
 ## 2026-06-18 — Phase 4: context assembly + D-013 fix (in-memory)
 
 Per-POV view construction (CORE §6.3/§6.4): every agent acts from a belief store derived on read from the single event log (D-001). 9 new tests (`tests/test_phase4_context.py`); 70 total, all passing.

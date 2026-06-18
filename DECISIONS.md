@@ -101,6 +101,21 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Relates to:** D-001 (read-time projection), the phase-3 perception model (which surfaced it), phase 4 context assembly (where it was fixed).
 **Impact:** `ProjectedEvent`, `event_log.project_for`, context assembly, every belief-store consumer.
 
+## D-014 · Generative scene imagery · Open · 2026-06-18
+**Question:** Should the interface generate an AI image at each major scene change to set scene and tone (no mechanical/tracking role)?
+**Options:** (a) Text + voice only (the CORE §12 v1 non-goal as written). (b) An impressionistic per-scene image generated via API at scene transitions, mood-setting only.
+**Recommendation:** Defer to the interface phase (11) — it is pure downstream rendering and touches no authoritative state. If adopted, two constraints are load-bearing: (1) build the image prompt from the *player's* belief store / canon, never GM hidden state, or the picture leaks secrets through the back door (principle 2); (2) treat the image as narration — keep it impressionistic and seeded from committed scene facts so it can't silently contradict canon (e.g. depict a different guard count) (principle 4). Needs a definition of "major scene change" (zone/scene transition, or an explicit GM scene declaration) and a per-image cost/latency budget. Softens the §12 "no graphics in v1" non-goal → a v1.x feature, not v1.
+**Relates to:** CORE §12 (graphics non-goal), channel router / interface + TTS, D-005 (cost/latency budget).
+**Impact:** Interface / channel router; an image-generation service; scene-change detection.
+
+## D-015 · Configurable seats: human/AI in any role, multi-participant · Open · 2026-06-18
+**Question:** Should a session let the human assign which seats (GM, each teammate, NPCs) are human vs AI — including the human as GM with AI players, or several humans on one team with an AI GM?
+**Why the architecture is friendly:** the blackboard topology (§4.3) and POV partitioning already make every seat just a POV (belief store) plus a proposal source; the determinism boundary is indifferent to whether a proposal came from a human client or a model agent. CORE §12 already commits that the architecture "must not preclude" multi-human.
+**Options:** (a) Keep the fixed shape (one human player; AI GM + AI teammates). (b) Generalize to N seats, each human-or-AI, in any role, set by session config.
+**Recommendation:** Target (b), but split the work. The cheap, high-leverage part is to model a role-agnostic **participant/seat** abstraction (POV + proposal source) when building character agents (phase 6) and the orchestrator (phase 7), so "human = the player, AI = everyone else" is never hardcoded and later unwound. Defer the heavy part — multi-client networking, per-seat identity/auth, concurrent-turn arbitration and sync — to the interface phase (11)+. Note: human-as-GM is a useful stress test of the honesty machinery — the deterministic core would hold a *human* GM to canon via the auditor exactly as it does an AI GM.
+**Relates to:** CORE §12 (multi-human must-not-preclude), §4.3 blackboard, character agents (phase 6), orchestrator (phase 7), D-006 (NPC handling), interface (phase 11).
+**Impact:** A participant/seat abstraction, orchestrator turn routing, the agent layer (agents become optional per seat), interface (multi-client), identity/auth.
+
 ## MVP Implementation Defaults
 
 These are implementation defaults used until a decision is formally resolved. They are not final design resolutions unless moved into `Resolved` with an updated decision record.
