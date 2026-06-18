@@ -27,12 +27,17 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Recommendation:** Lean (a) for routine play; consider (b) selectively for exploration-heavy scenes where not-knowing is the point.
 **Impact:** Adjudicator, perception model, world state (map visibility).
 
-## D-004 · Disposition→mechanics coupling: passive modifier vs. Strings · Open · 2026-06-17
+## D-004 · Disposition→mechanics coupling · Resolved · 2026-06-17
 **Question:** How does disposition affect mechanics, if at all?
-**Options:** (a) Always-on passive modifier on cooperation/social rolls. (b) Strings — a spendable relational resource for one-time, legible effects.
-**Recommendation:** (b) Strings. A passive modifier corrupts EV and incentivizes approval-farming. Whatever is chosen must pass the FABLE EV audit before going live.
-**Ruleset note (2026-06-17, `fable_engine.md` v4):** FABLE already has a spendable relational-leverage economy — **Edge** (capped at 3, §13) plus **Bonds** as Held Truths (§12). Invariant 18 and the §22 Mode rule explicitly reject new resolution subsystems ("express it through the core surfaces or reject it as subsystem growth"). So a *separate* "Strings" mechanic likely violates the ruleset's own anti-bloat invariant; disposition should probably couple by routing **through** Edge/Bonds (e.g. disposition state gates Bond invocation, compels, or Edge gain) rather than adding a new currency. This reframes option (b) rather than discarding it. Still Open; user call. **Knock-on:** if accepted, update CORE §3/§7.5 where "Strings" is named as the preferred coupling, and the phase-10 STATUS note.
-**Impact:** Disposition graph, rules engine, economy/EV balance.
+**Options:** (a) Always-on passive modifier on cooperation/social rolls. (b) A spendable relational resource for one-time, legible effects.
+**Decision:** Option (b), realized **through FABLE's native Edge + Bonds** — *not* a separate "Strings" currency and *not* a passive modifier.
+- The **disposition graph** is the fine-grained, event-derived, multi-axis relational *state* (written by the disposition engine; trigger recognition per D-011).
+- **Bonds** (Held Truths, `fable_engine.md` §12) are the mechanical *handles*: a relationship surfaces as a Bond the actor may **Lean** on (Edge, §13) or that pays a **Ledger** step where it *changes* baseline (§10). **Edge** (cap 3) is the spend currency.
+- Disposition *pressures* Bonds through **compels** (world pressure on a Held Truth; accepting one grants Edge, §13), respecting Held-Truth authorship — the world compels, only the owner rewrites; for NPCs the disposition engine / NPC-manager holds authorship. A Bond changing through play is an advancement trigger (§21).
+- **No always-on modifier** (preserves the anti-EV-corruption reason behind rejecting (a)) and **no new subsystem** (FABLE invariant 18 / §22 Mode rule).
+**Rationale:** FABLE already supplies a spendable relational-leverage economy; a parallel "Strings" mechanic is subsystem growth the ruleset's own invariants reject. Routing through Edge/Bonds keeps coupling legible, EV-safe, and inside the core surfaces. Any coupling still passes the FABLE EV audit before a live table.
+**Supersedes:** the standalone "Strings" framing in CORE §3/§7.5/§10. **Relates to:** D-011 (the deltas this coupling expresses).
+**Impact:** Disposition graph, disposition engine, rules engine (Edge/Bonds/compels), economy/EV balance.
 
 ## D-005 · Spotlight: director-picks-next vs. agent-bidding · Open · 2026-06-17
 **Question:** In free social scenes, how is the next speaker chosen?
@@ -86,7 +91,7 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-001:** Implement belief stores as read-time projections from the event log, with optional cache.
 - **D-002:** Use abstract range bands for the MVP unless the FABLE rules implementation demands coordinates.
 - **D-003:** Treat routine positioning queries as free OOC clarification for MVP; later support IC assessment for exploration-heavy scenes.
-- **D-004:** Do not implement passive disposition modifiers. If mechanics are needed, prototype spendable Strings only after the core EV audit exists.
+- **D-004:** *Resolved* — couple disposition through Edge/Bonds, never a passive modifier and never a separate currency. Defer building it to phase 10, after the rules engine's Edge/Bond/compel surfaces and the EV audit exist.
 - **D-005:** Start with director-picks-next spotlight. Prototype agent bidding only after a cost/latency budget exists.
 - **D-006:** Let the GM puppet walk-on NPCs for MVP; promote recurring NPCs later.
 - **D-007:** Start with GM-emitted structured commitment blocks for reliability; later prototype post-hoc extraction.
@@ -97,4 +102,5 @@ These are implementation defaults used until a decision is formally resolved. Th
 
 ## Resolved
 
+- **D-004** · Disposition→mechanics coupling → through FABLE's native Edge/Bonds; no passive modifier, no separate "Strings" currency · 2026-06-17.
 - **D-010** · Proposal/action queue → transient, non-authoritative buffer (not events on the log) · 2026-06-17.

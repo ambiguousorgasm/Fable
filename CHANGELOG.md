@@ -4,6 +4,17 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-17 — Resolve D-004: disposition couples through Edge/Bonds
+
+Resolved the disposition→mechanics coupling fork in favor of FABLE's native economy, eliminating the standalone "Strings" mechanic.
+
+- **Decision:** disposition couples through **Bonds** (Held Truths the actor may *Lean* on via **Edge**, or that pay a *Ledger* step where they change baseline) and through **compels** (respecting Held-Truth authorship — world compels, owner rewrites). The disposition graph is the event-derived *state*; Bonds are the mechanical *handles*; Edge is the spend currency. No passive modifier, no separate currency.
+- **Why:** FABLE already provides a spendable relational-leverage economy, and invariant 18 / the §22 Mode rule reject new resolution subsystems — a parallel "Strings" mechanic is subsystem growth. Routing through Edge/Bonds keeps it legible, EV-safe, and inside the core surfaces.
+- Propagated the retirement of "Strings": CORE §3 (vocabulary entry reframed to *Disposition coupling (Edge/Bonds)*), §7.5 (mechanical-coupling caution rewritten), §10 (phase-10 line), §11 (removed from the open-decision index); `COMPONENTS.md` rules-engine and disposition-graph entries; `STATUS.md` phase 10. Marked **D-004 Resolved** and updated its MVP default.
+- Relates to D-011 (which recognizes the deltas this coupling expresses). Building it is deferred to phase 10. Precedence re-checked: nothing contradicts CORE.
+
+---
+
 ## 2026-06-17 — Integrate the FABLE ruleset (`fable_engine.md`, Engine Schema v4)
 
 The ruleset doc was added to the repo; integrated it as canon for the rules-engine component *without implementing any of it* (phase 1 remains a minimal rules-engine interface, not FABLE's math).

@@ -94,7 +94,7 @@ Code, not models. These live *below* the determinism boundary and carry truth.
 - **Reads:** World state, character sheets, dice service.
 - **Writes:** Resolved outcomes (→ world state via committed events).
 - **Depends on:** World state, character sheets, dice service.
-- **Depended-on-by:** GM adjudicator, auditor, beat loop (step 5), disposition engine (some deltas), Strings/economy coupling.
+- **Depended-on-by:** GM adjudicator, auditor, beat loop (step 5), disposition engine (some deltas), disposition→Edge/Bonds coupling (D-004).
 
 ### Disposition engine
 - **Purpose:** Derives and applies disposition deltas from logged events ("took a hit meant for me → +trust"), writing each change to the disposition graph **linked to its causal event id** so attitudes stay auditable and explainable, never free-floating (CORE §7.5). The single authoritative writer of the disposition graph: agent-proposed deltas (e.g. from the NPC-manager) are applied *through* it, not written directly.
@@ -152,7 +152,7 @@ Authoritative state. No model owns these; services read and write them.
 - **Depended-on-by:** Fact-extraction (consistency check), auditor, plot-manager (may not cross it).
 
 ### Disposition graph
-- **Purpose:** Directed, asymmetric, multi-axis (trust/affection/respect/obligation) attitudes; every delta linked to its causal event. Optional Strings resource.
+- **Purpose:** Directed, asymmetric, multi-axis (trust/affection/respect/obligation) attitudes; every delta linked to its causal event. The fine-grained relational *state*; it surfaces mechanically only through **Bonds** (Held Truths) and **Edge** spends, never as a passive modifier and never as a separate currency (D-004).
 - **Written by:** Disposition engine (the authoritative writer; all deltas flow through it).
 - **Depended-on-by:** Context assembly, character agents, NPC-manager, mechanics coupling (see DECISIONS D-004).
 

@@ -89,7 +89,7 @@ Precise terms, used consistently throughout the codebase and docs.
 - **Spotlight / Initiative.** Two turn modes. Initiative = structured order (combat), engine-driven. Spotlight = free-flowing social scenes; the director picks who is most pressed to act, or agents *bid* to speak.
 - **Auditor / Referee.** Watches narration and proposed actions against world state and the rules engine; flags contradictions and illegal outcomes. Live validation gates.
 - **Disposition graph.** A directed graph of attitudes between characters, multi-axis (e.g. trust, affection, respect, obligation), asymmetric (A→B ≠ B→A), with every change derived from and linked to a logged event.
-- **Strings.** A spendable unit of relational leverage (PbtA-style) — the preferred way to couple disposition to mechanics, instead of an always-on passive modifier.
+- **Disposition coupling (Edge/Bonds).** Disposition affects mechanics only through FABLE's native economy — **Bonds** (Held Truths the actor may *Lean* on, or that pay a *Ledger* step where they change baseline) spent via **Edge** — never an always-on passive modifier and never a separate currency. (Earlier drafts named the spendable unit *Strings*; per D-004 this is realized through Edge/Bonds rather than a new surface, honoring FABLE invariant 18.)
 - **Plot graph.** The GM's prepared structure as a graph of fronts, clocks, hooks, secrets, and hidden nodes with preconditions — not a linear script. Distinguishes plot **functions** (the need: "player must get a hint to location Y") from **fixtures** (the delivery: "this NPC gives it").
 - **Plot-manager.** A dedicated agent that owns the *future*: tracks the plot graph, detects divergence, re-binds functions to new fixtures, promotes high-interest threads, and accumulates player-interest signals. Edits only the hidden graph, never the canon ledger.
 - **Front / Clock.** Offscreen threats and progress trackers that advance over time (FABLE's Long Game machinery).
@@ -215,7 +215,7 @@ The discipline that keeps flexibility from becoming incoherence: **the plot-mana
 
 A directed, asymmetric, multi-axis graph (trust / affection / respect / obligation as a starting set; two characters can respect and dislike each other simultaneously). Every change is **derived from a logged event** ("took a hit meant for me: +trust") so attitudes are auditable and explainable, never free-floating vibes. Disposition feeds two places: agent context (the prompt states current attitude) and, carefully, mechanics.
 
-**Mechanical-coupling caution.** A persistent passive cooperation modifier looks great and quietly corrupts the EV math — it incentivizes approval-farming and compounds unpredictably. Prefer the **Strings** model: disposition is a spendable resource, banked and spent for one-time, legible effects, rather than an always-on multiplier. Whatever coupling is chosen must pass the same EV audit as any other FABLE mechanic before it reaches a live table.
+**Mechanical-coupling caution.** A persistent passive cooperation modifier looks great and quietly corrupts the EV math — it incentivizes approval-farming and compounds unpredictably. So disposition couples **through FABLE's native economy, not a new mechanic** (D-004): the disposition graph is the fine-grained, event-derived relational *state*; **Bonds** (Held Truths) are the mechanical handles the actor may *Lean* on via **Edge**, or that pay a *Ledger* step where they change baseline; and disposition *pressures* Bonds through **compels**, respecting Held-Truth authorship — the world compels, only the owner rewrites, and a Bond changing through play is itself an advancement trigger (`fable_engine.md` §21). No always-on modifier, and — per FABLE invariant 18 and the §22 Mode rule — no separate "Strings" currency. Any coupling still passes the FABLE EV audit before it reaches a live table.
 
 ### 7.6 The auditor
 
@@ -267,7 +267,7 @@ Ordered so that each phase rests on a foundation the previous phase laid. The or
 7. **Orchestrator / spotlight.** Multi-party turn flow: initiative for combat, spotlight/bidding for social scenes; TTS turn-gating.
 8. **Auditor.** Live validation gates against the now-rich committed state.
 9. **Plot-manager.** Function/fixture re-binding, hidden-graph revision, interest signals.
-10. **Disposition system.** Multi-axis graph, event-derived deltas, Strings coupling (EV-audited).
+10. **Disposition system.** Multi-axis graph, event-derived deltas, coupling through Edge/Bonds (no separate currency; EV-audited) — D-004.
 11. **Interface and voice polish.** Per-character channels, whisper/OOC, TTS, render.
 
 The two phases most responsible for how *lifelike* the result feels — and least likely to exist already — are **3 (perception-gated belief store)** and **5 (cold/warm GM split)**. Weight effort there.
@@ -281,7 +281,6 @@ These are tracked as a living log in `DECISIONS.md` (open and resolved, each wit
 - Belief store: read-time projection vs. write-time materialization.
 - Spatial model: abstract range bands vs. coordinates/grid.
 - Positioning queries: free OOC read vs. in-character assessment; map fog-of-war or not.
-- Disposition→mechanics coupling: passive modifier vs. Strings.
 - Spotlight: director-picks-next vs. agent-bidding/raise-hand.
 - NPC management: GM puppets minor NPCs ad hoc vs. dedicated NPC-manager agent.
 - Fact-extraction: post-hoc extraction pass vs. GM-emitted structured commitment block.
