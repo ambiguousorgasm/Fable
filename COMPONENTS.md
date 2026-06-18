@@ -35,7 +35,7 @@ These run on LLM inference. They live *above* the determinism boundary: they pro
 - **Purpose:** Runs NPCs that don't warrant their own persistent agent, aligned with the GM so NPCs still drive story. Fidelity tiering: recurring NPCs may instead be promoted to full character agents.
 - **Kind:** Agent (model), GM-aligned. May be merged into the GM rather than separate.
 - **Reads:** GM-shared context for NPCs in scene; world state (entitled); perception results (e.g. overheard events).
-- **Writes:** NPC action/dialogue events; NPC disposition deltas (event-derived).
+- **Writes:** NPC action/dialogue events; *proposes* NPC disposition deltas (applied via the disposition engine, never written to the graph directly).
 - **Depends on:** Context assembly, perception model, disposition graph, world state.
 - **Depended-on-by:** Access matrix (overhear path; trivial-action perception); interface (NPC channels).
 
@@ -68,6 +68,13 @@ Code, not models. These live *below* the determinism boundary and carry truth.
 - **Depends on:** World state (presence/initiative metadata only), perception model (presence).
 - **Depended-on-by:** Beat loop (step 1); all agents (their turns); interface (TTS turn-gating).
 
+### Action queue / proposal buffer
+- **Purpose:** The blackboard's write surface (CORE §4.3). Agents (GM, teammates, NPC-manager) write proposed intents and dialogue here each beat (beat loop step 3); the orchestrator and adjudicator drain and arbitrate them (steps 4–7). **Transient and non-authoritative** — unlike the event log, it holds *candidates, not truth*. A proposal becomes a logged event only after it is resolved and committed (steps 6–9), at which point its audience is computed; until then it never enters any belief projection, so an unresolved proposal cannot leak across POVs. This is what keeps the append-only log purely authoritative while still giving agents somewhere to propose.
+- **Reads:** — (written by agents).
+- **Writes:** Pending proposals; drained/cleared each beat.
+- **Depends on:** — (a buffer the mediator drains; depends on nothing below it).
+- **Depended-on-by:** Beat loop (steps 3–7); orchestrator (drains and arbitrates); GM/character/NPC-manager agents (their write target).
+
 ### Context assembly / fog-of-war filter
 - **Purpose:** Builds each agent's prompt by projecting the event log through that agent's audience membership and adding persona, entitled state/relationships, and retrieved memory. Implements fog of war.
 - **Reads:** Event log, persona specs, world state, disposition graph, perception results.
@@ -87,7 +94,15 @@ Code, not models. These live *below* the determinism boundary and carry truth.
 - **Reads:** World state, character sheets, dice service.
 - **Writes:** Resolved outcomes (→ world state via committed events).
 - **Depends on:** World state, character sheets, dice service.
-- **Depended-on-by:** GM adjudicator, auditor, beat loop (step 5), disposition (some deltas), Strings/economy coupling.
+- **Depended-on-by:** GM adjudicator, auditor, beat loop (step 5), disposition engine (some deltas), Strings/economy coupling.
+
+### Disposition engine
+- **Purpose:** Derives and applies disposition deltas from logged events ("took a hit meant for me → +trust"), writing each change to the disposition graph **linked to its causal event id** so attitudes stay auditable and explainable, never free-floating (CORE §7.5). The single authoritative writer of the disposition graph: agent-proposed deltas (e.g. from the NPC-manager) are applied *through* it, not written directly.
+- **Kind:** Deterministic service. Recognition of which events trigger which deltas may be rule-based, model-proposed, or both — unresolved; see DECISIONS D-011.
+- **Reads:** Event log (causal events), rules-engine outcomes, world state.
+- **Writes:** Disposition graph deltas (each linked to a causal event id).
+- **Depends on:** Event log, disposition graph, rules engine.
+- **Depended-on-by:** Beat loop (step 9); disposition graph (its writer of record); roadmap phase 10.
 
 ### Dice service
 - **Purpose:** Logged, auditable randomness. No claimed outcome is real unless it came from here.
@@ -138,6 +153,7 @@ Authoritative state. No model owns these; services read and write them.
 
 ### Disposition graph
 - **Purpose:** Directed, asymmetric, multi-axis (trust/affection/respect/obligation) attitudes; every delta linked to its causal event. Optional Strings resource.
+- **Written by:** Disposition engine (the authoritative writer; all deltas flow through it).
 - **Depended-on-by:** Context assembly, character agents, NPC-manager, mechanics coupling (see DECISIONS D-004).
 
 ### Plot graph store
@@ -158,6 +174,20 @@ Authoritative state. No model owns these; services read and write them.
 
 ---
 
+## Cross-cutting protocols
+
+Not components (no model, service, or store of their own), but referenced by components above and registered here so those references resolve.
+
+### Override *(protocol; see DECISIONS D-008)*
+- **What it is:** A deliberate, logged revision of committed state — recorded as an event (`type: override`) carrying an author and a reason. The `event.schema.json` `type` field is already free-form, so no schema change is needed.
+- **How it works:** The auditor keys off the override marker to read the change as **intentional fiat rather than a bug** (CORE §3, §6.2). This is what distinguishes a sanctioned rule-of-cool / self-correction from the one forbidden move (silent contradiction).
+- **MVP default (D-008):** no unstructured overrides; every override is an explicit logged event with author and reason.
+- **Open (D-008):** *who* may author an override (human director / GM agent / separate meta-agent) and exactly how it surfaces.
+- **Depends on:** Event log (carries the override event), auditor (intentional-vs-bug distinction).
+- **Depended-on-by:** Auditor (treats flagged overrides as fiat); CORE §6.2 forbidden-move boundary.
+
+---
+
 ## Quick dependency lookup (remove-impact)
 
 If you remove or rename a component, these are the most commonly missed reconciliation points:
@@ -167,3 +197,5 @@ If you remove or rename a component, these are the most commonly missed reconcil
 - **Plot-manager** → GM consumption, beat-loop divergence handling, roadmap phase 9, CORE §4.2/§7.4.
 - **Rules engine / dice** → adjudicator, auditor, disposition deltas, CORE §6.1/§7.2.
 - **Fact-extraction** → GM declarations, auditor's ability to check anything, CORE §6.1/§7.3.
+- **Action queue** → beat-loop steps 3–7, orchestrator drain, every agent's propose step, CORE §4.3/§5. (Transient; not on the authoritative log.)
+- **Disposition engine** → disposition-graph writes, beat-loop step 9, roadmap phase 10, CORE §7.5.

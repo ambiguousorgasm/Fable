@@ -4,6 +4,18 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-17 — Close three dangling design references (queue, disposition engine, override)
+
+Design-review follow-up: registered three things CORE/COMPONENTS already *assumed* but never defined, so their references resolve. Gap-closing, not new machinery.
+
+- **Action queue / proposal buffer** — added to `COMPONENTS.md` as a deterministic mediation service and to CORE §4.3, §5, §8. Resolved the fork (new **D-010**) in favor of a *transient, non-authoritative* buffer rather than proposals-on-the-log: keeps the append-only event log purely authoritative and stops un-audienced proposals leaking into belief projections. Referenced by the character-agent "writes to the queue" line and beat-loop step 3, previously unregistered.
+- **Disposition engine** — added to `COMPONENTS.md` as the deterministic, authoritative writer of the disposition graph (every delta linked to its causal event, per CORE §7.5); named in CORE §4.1 and beat-loop step 9. Reconciled the disposition-graph store ("written by") and the NPC-manager (now *proposes* deltas, applied through the engine). Closes the "store with no writer-of-record" gap.
+- **Override** — registered in `COMPONENTS.md` under a new "Cross-cutting protocols" section as a logged `override` event type + auditor behavior (not a standalone component), resolving the dangling "override mechanism" reference in the auditor's `depended-on-by`. No schema change (event `type` is already free-form). Authority remains open under **D-008**.
+- Opened **D-011** (disposition-delta recognition: deterministic rule table vs. model-proposed) and indexed it in CORE §11. Resolved **D-010** (proposal queue topology).
+- Precedence re-checked: no satellite now contradicts CORE.
+
+---
+
 ## 2026-06-17 — Repository and environment bootstrap
 
 - Initialized a dedicated git repository at the project root (`git init -b main`). *Why:* the scaffold was previously untracked inside the `/home/audrey` repo, which made the project `.gitignore` inert, the CHANGELOG/commit-based change protocol moot, and any branch/PR workflow impossible. The project is now its own versioned repo.

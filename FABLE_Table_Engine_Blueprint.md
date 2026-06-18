@@ -108,7 +108,7 @@ Precise terms, used consistently throughout the codebase and docs.
 
 **Mediation layer.** The orchestrator/director (turn routing on metadata), the context-assembly / fog-of-war filter (per-POV view construction), and the referee/auditor (narration vs. ground truth). This layer is mostly deterministic; the auditor may use a small model for natural-language surfacing.
 
-**Deterministic core (code, not models).** World state, the rules engine, the dice service, the append-only event log, and the relationship/disposition graph. This is the ground truth the GM writes into and is bound by, and the thing every other layer checks against.
+**Deterministic core (code, not models).** World state, the rules engine, the dice service, the append-only event log, and the relationship/disposition graph (maintained by the disposition engine, which derives every delta from a logged event). This is the ground truth the GM writes into and is bound by, and the thing every other layer checks against.
 
 The **determinism boundary** runs between the agent layer (models) and everything below it (code). Everything below the line carries truth; everything above it carries presentation.
 
@@ -124,7 +124,7 @@ The plot-manager (Section 7.4) is a separate agent, not part of the GM: the **GM
 
 ### 4.3 The blackboard topology
 
-Agents never call each other. They read filtered views of shared state and write proposed actions to a queue. The orchestrator and engine arbitrate, commit results to shared state, log events, and update beliefs and relationships. The updated, re-filtered state is what agents see on the next beat. This is the table: you observe the shared fiction and react, you do not sync minds.
+Agents never call each other. They read filtered views of shared state and write proposed actions to a queue — a *transient, non-authoritative* proposal buffer, distinct from the append-only event log: it holds candidates, and a proposal becomes a logged event only once resolved and committed (so unresolved proposals never enter another agent's belief projection). The orchestrator and engine arbitrate, commit results to shared state, log events, and update beliefs and relationships. The updated, re-filtered state is what agents see on the next beat. This is the table: you observe the shared fiction and react, you do not sync minds.
 
 ---
 
@@ -140,7 +140,7 @@ The runtime cycle, executed each "beat":
 6. **Extract and commit.** Any new declared facts are lifted into structured commitments and checked against the canon ledger (see Section 6).
 7. **Audit.** The referee checks the proposed narration/outcome against world state and the rules engine.
 8. **Narrate.** The narrator renders the cold result into warm prose. It never saw the dice.
-9. **Commit and log.** State updates; an event is appended with its audience and visibility; affected belief stores and disposition edges update.
+9. **Commit and log.** State updates; an event is appended with its audience and visibility; affected belief stores update, and the disposition engine derives any disposition-edge deltas from the new event (each linked to its causal event id).
 10. **Render.** The UI routes output to the correct channels/boxes; TTS queues in turn order (the same scheduler that prevents voice overlap).
 
 Loop.
@@ -232,6 +232,7 @@ Concrete enough to begin schema design; not final. These are partially realized 
 - **Character sheet:** FABLE stats, current stance, resources/economy state. Mechanical truth, owned by the core.
 - **Canon ledger:** the immutable set of revealed, committed facts. May be implemented as a view over committed+disclosed events, but is conceptually a distinct, protected boundary.
 - **Belief store (derived):** per-agent projection over the event log; cached, never authoritative.
+- **Action queue (transient):** the blackboard's pending-proposal buffer; non-authoritative and drained each beat. Distinct from the event log — a proposal becomes an event only on commit, so it never enters a belief projection while still a candidate.
 - **Disposition graph:** directed edges `A→B` with axis values, each delta linked to its causal event id.
 - **Plot graph:** fronts, clocks, hooks, secrets, hidden nodes with preconditions; function nodes and their current fixture bindings; an interest-signal accumulator. Hidden from all player/TM audiences.
 - **Persona spec:** per character agent — voice, values, public goals, hidden agenda.
@@ -286,6 +287,7 @@ These are tracked as a living log in `DECISIONS.md` (open and resolved, each wit
 - Fact-extraction: post-hoc extraction pass vs. GM-emitted structured commitment block.
 - Override authority: who may invoke it, and how it is surfaced and logged.
 - Canon ledger: separate store vs. a view over committed-and-disclosed events.
+- Disposition-delta recognition: deterministic rule table vs. model-proposed deltas (the disposition engine is the authoritative writer either way).
 
 See `DECISIONS.md` for the reasoning and any resolutions.
 
