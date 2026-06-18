@@ -113,8 +113,15 @@ def perception_map(
     """Map each entity that could sense the stimulus to the modalities it sensed.
 
     Pure read; the actor is excluded (you do not overhear yourself).
+
+    A stimulus must originate in a real zone. An unknown `origin` is a caller
+    error, not "nobody perceived" — silently returning an empty set there could
+    mask a real overhear (under-disclosure that looks like secrecy holding), so
+    fail loud instead.
     """
     world = scene.world
+    if origin not in world.zones:
+        raise ValueError(f"stimulus origin {origin!r} is not a known zone")
     sensed: dict[str, set[str]] = {}
 
     def add(entity: str, modality: str) -> None:

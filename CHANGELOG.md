@@ -4,6 +4,17 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Phase 3: perception stress-test pass
+
+Adversarial pass over the load-bearing wall before building on it (CORE §13). 14 new tests (`tests/test_phase3_perception_stress.py`); 60 passing + 1 xfail.
+
+- **Over-disclosure probes all hold** — closeness can't tunnel a whisper across a zone, loud doesn't carry two hops or past a closed leg, sight doesn't pass a closed door, closing a non-existent connection is inert, and an overhear leaks no identity / no content / no source link.
+- **Fail-safe limitations pinned** (D-012): overhears always degrade to a vague hint, so a same-room non-addressee at normal volume gets "voices nearby", never the words — under-disclosure (safe for secrecy); "fully overheard content" is deferred to audience-derivation in phase 4. `derive_overhears` is not idempotent — dedup belongs at the future beat-loop chokepoint. Both pinned so a later change can't silently regress them.
+- **Hardening:** `perception_map` now raises on an unknown `origin` zone instead of returning an empty set — a wrong origin was a caller bug that could mask a real overhear (under-disclosure masquerading as secrecy).
+- **Finding → opened D-013:** `ProjectedEvent` exposes the global `sequence`, so a non-audience POV can infer hidden-event counts from the gaps — a metadata side-channel against POV partitioning (principle 2). Not a perception bug; the fix is per-POV ordering in the projection, slated for phase 4. Encoded as a `strict` xfail so it flips to a failure the moment it's fixed.
+
+---
+
 ## 2026-06-18 — Phase 3: perception model (in-memory)
 
 The load-bearing wall (CORE §6/§7.1): a deterministic answer to "who could have sensed this?", over the fiction-positional zone graph (D-002) — zones + relational Truths, no coordinates. Secrecy is enforced here by who-could-sense, never by asking a model to forget (CORE principle 4). 12 new tests (`tests/test_phase3_perception.py`, incl. the plan's whisper/noise/line-of-sight scenarios); 47 total, all passing.
