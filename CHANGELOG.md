@@ -4,6 +4,18 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Phase 3: perception model (in-memory)
+
+The load-bearing wall (CORE §6/§7.1): a deterministic answer to "who could have sensed this?", over the fiction-positional zone graph (D-002) — zones + relational Truths, no coordinates. Secrecy is enforced here by who-could-sense, never by asking a model to forget (CORE principle 4). 12 new tests (`tests/test_phase3_perception.py`, incl. the plan's whisper/noise/line-of-sight scenarios); 47 total, all passing.
+
+- **Zone graph + presence on `WorldState`** (`world_state.py`): durable topology (`zones`, undirected `connections`), coarse position (`place`/`zone_of`/`entities_in` over `Entity.position = {"zone": …}`), and fine intra-zone proximity as relational closeness Truths (`set_close`/`are_close`/`close_to`). This is the registry's "scene/zone graph" home; nothing metric (D-002).
+- **`Scene` — the volatile sensory state** (`perception.py`, the registered Scene/perception state): lighting (`darken`/`lit`) and connection openness (`close`/`transmits`). Defaults permissive (lit, open). Deliberately separate from `WorldState` so durable structure and changing conditions don't get tangled (D-001 anti-duplication).
+- **The model** (`perceivers`/`perception_map`): a pure read returning who could sense a `Stimulus`. Auditory by volume — whisper stays in-zone and reaches only entities *close* to the actor (why a whisper is private in a crowd); normal fills the zone; loud carries one open hop. Visual requires the origin lit + line of sight (same zone, or into a lit origin across an open connection).
+- **Overhears** (`derive_overhears`): the gap between who-could-perceive and the event's intended audience becomes `may_have_perceived` events — a vague, content-level hint authored by a neutral `perception` source (so the overhearer learns it sensed *something*, not who or what), linked to the source via `derived_from`. The secret content never leaves the original event's narrow audience.
+- **Decisions:** opened **D-012** (perception propagation fidelity) — the thin zone-based model is the MVP default; richer attenuation/occlusion deferred until stress-testing demands it. Relates to D-002. **Pending:** stress-testing the wall; SQLite persistence (plan step 6).
+
+---
+
 ## 2026-06-18 — Phase 2: access model + commit boundary (in-memory)
 
 Implemented the declaration → consistency-check → bind lifecycle (CORE §6.1) over the Phase 1 log. No new components — this realizes the already-registered fact-extraction/commit pipeline, canon ledger, and override protocol from `COMPONENTS.md`. 11 new tests (`tests/test_phase2_access.py`); 35 total, all passing.

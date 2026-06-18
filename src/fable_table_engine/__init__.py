@@ -1,7 +1,8 @@
 """FABLE Table Engine — AI-facilitated tabletop RPG table engine.
 
-Phase 1 (deterministic core + event log) public surface. Read CLAUDE.md and the
-CORE blueprint (FABLE_Table_Engine_Blueprint.md) before adding modules.
+Public surface through phase 3 (deterministic core + event log, access/commit
+boundary, perception model). Read CLAUDE.md and the CORE blueprint
+(FABLE_Table_Engine_Blueprint.md) before adding modules.
 """
 
 from .access import (
@@ -24,6 +25,15 @@ from .events import (
     Event,
     ProjectedEvent,
 )
+from .perception import (
+    MAY_HAVE_PERCEIVED,
+    PERCEPTION_AUTHOR,
+    Scene,
+    Stimulus,
+    derive_overhears,
+    perceivers,
+    perception_map,
+)
 from .rules import Band, CheckResult, RulesEngine, band_for_margin
 from .world_state import Entity, WorldState
 
@@ -44,14 +54,21 @@ __all__ = [
     "Event",
     "EventLog",
     "Fact",
+    "MAY_HAVE_PERCEIVED",
     "MECHANICAL_TYPES",
     "OVERRIDE_TYPE",
+    "PERCEPTION_AUTHOR",
     "ProjectedEvent",
     "RulesEngine",
+    "Scene",
+    "Stimulus",
     "VISIBILITY_LEVELS",
     "WorldState",
     "band_for_margin",
     "canon_ledger",
     "committed_facts",
+    "derive_overhears",
+    "perceivers",
+    "perception_map",
     "__version__",
 ]

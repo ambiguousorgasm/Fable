@@ -86,6 +86,13 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Recommendation:** Lean (c) — deterministic rules for engine-legible triggers; model-proposed deltas for purely social cues, always committed through the engine so every delta stays auditable and event-linked. Defer until the disposition system (phase 10) is built.
 **Impact:** Disposition engine, rules engine, context assembly, EV considerations (relates to D-004).
 
+## D-012 · Perception propagation fidelity · Open · 2026-06-18
+**Question:** How rich should the perception model's sense-propagation be?
+**Options:** (a) Thin zone-based — binary open/closed connections, whole-zone audibility, one-hop carry for loud sound, lit/dark line of sight, intra-zone closeness Truths for whisper. (b) Richer — multi-hop sound attenuation, partial occlusion, per-sense connection properties (a curtain blocks sight but not sound), positional gradients within a zone.
+**Recommendation:** Start (a) — the model built in phase 3; it satisfies the whisper/noise/line-of-sight success scenarios (CORE §13). Promote toward (b) only where stress-testing shows the coarse model breaks a secrecy or spatial-consistency criterion. The plan flags perception for early stress-testing precisely because this is the load-bearing wall.
+**Relates to:** D-002 (fiction-positional; propagation must stay non-metric), D-003 (map fog-of-war could raise the fidelity bar), the perception model and Scene/perception state.
+**Impact:** Perception model, scene/perception state, world-state zone graph, every event audience.
+
 ## MVP Implementation Defaults
 
 These are implementation defaults used until a decision is formally resolved. They are not final design resolutions unless moved into `Resolved` with an updated decision record.
@@ -99,6 +106,7 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-007:** Start with GM-emitted structured commitment blocks for reliability; later prototype post-hoc extraction. *(Exercised in phase 2: `CommitPipeline.commit` takes structured `Commitment`s directly; no prose-extraction pass exists yet.)*
 - **D-008:** Do not allow unstructured overrides in MVP. If an override is needed, require an explicit logged override event with author and reason. *(Exercised in phase 2: `commit(override=True, reason=...)` logs an `override`-type event and refuses an override with no reason. Author identity / who-may-override still Open.)*
 - **D-009:** Implement the canon ledger as a view over committed-and-disclosed events unless performance requires materialization. *(Exercised in phase 2: `canon_ledger()` is a pure fold over the log, not a materialized store.)*
+- **D-012:** Thin zone-based propagation — binary open/closed connections, whole-zone audibility, one-hop loud carry, lit/dark line of sight, closeness Truths for whisper. *(Built in phase 3; richer attenuation/occlusion deferred until stress-testing demands it.)*
 
 ---
 
