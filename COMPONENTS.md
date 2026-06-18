@@ -90,7 +90,7 @@ Code, not models. These live *below* the determinism boundary and carry truth.
 - **Depended-on-by:** Context assembly, orchestrator (presence), event audiences (whole access model), access matrix rows.
 
 ### Rules engine
-- **Purpose:** Implements FABLE mechanics: resolution, stances, the Trade/Ledger economy, combat math, clocks/fronts. The single authority for mechanical outcomes.
+- **Purpose:** Implements FABLE's mechanics per `fable_engine.md` (Engine Schema v4): the 3d6 roll and result bands, TN/Exposure/Effect, the Trade and Ledger economies, Truths, Clocks, Fronts, Edge, and Stress/Scars. Combat, intrigue, etc. are **Modes** (configurations of these surfaces), not separate subsystems. The single authority for mechanical outcomes.
 - **Reads:** World state, character sheets, dice service.
 - **Writes:** Resolved outcomes (→ world state via committed events).
 - **Depends on:** World state, character sheets, dice service.
@@ -161,7 +161,7 @@ Authoritative state. No model owns these; services read and write them.
 - **Depended-on-by:** Plot-manager, GM (via plot-manager).
 
 ### Character sheets
-- **Purpose:** FABLE stats, current stance, economy/resource state. Mechanical truth.
+- **Purpose:** FABLE character anatomy (Concept, Skills 0–4, Traits, Bonds, Drive, Question, Gear) plus the Stress track, Scars, and Edge. Mechanical truth. See `fable_engine.md` §4, §13–14.
 - **Depended-on-by:** Rules engine, character/GM agents (entitled views).
 
 ### Persona specs

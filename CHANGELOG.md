@@ -4,6 +4,18 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-17 — Integrate the FABLE ruleset (`fable_engine.md`, Engine Schema v4)
+
+The ruleset doc was added to the repo; integrated it as canon for the rules-engine component *without implementing any of it* (phase 1 remains a minimal rules-engine interface, not FABLE's math).
+
+- Registered `fable_engine.md` in the `00_README.md` file map and referenced it from CORE §3 (rules engine), §8 (character sheet), the appendix, and the `COMPONENTS.md` rules-engine and character-sheet entries. It is authoritative for *rules mechanics*; CORE stays authoritative for *architecture*. *Why:* it was an orphan — referenced by nothing — exactly the map-drift the change protocol exists to catch.
+- Reconciled dead terminology: "**stance(s)**" (from an older FABLE draft) is not a v4 surface; replaced its references in CORE §3/§8/appendix and `COMPONENTS.md` (×2), and rebuilt `schemas/character_sheet.schema.json` to the actual anatomy (Concept · Skills 0–4 · Traits · Bonds · Drive · Question · Gear · Stress · Scars · Edge). The closest live analog to the old "stance" is the **Trade** (§9).
+- Anchored the **stakes gate** (CORE §3/§7.2/beat-loop step 4) to its mechanical definition: FABLE's **Exit Check** + the *no-empty-rolls* rule (`fable_engine.md` §11, §5).
+- Added ruleset-informed notes to **D-002** (FABLE is fiction-positional — no grid; favors the abstract default) and **D-004** (FABLE's Edge+Bonds is already a spendable-leverage economy; invariant 18 likely rules out a *separate* "Strings" subsystem). Both kept **Open** — flagged for a deliberate resolution, not silently decided.
+- Precedence re-checked: nothing contradicts CORE; the ruleset and CORE govern orthogonal domains (mechanics vs. architecture).
+
+---
+
 ## 2026-06-17 — Close three dangling design references (queue, disposition engine, override)
 
 Design-review follow-up: registered three things CORE/COMPONENTS already *assumed* but never defined, so their references resolve. Gap-closing, not new machinery.

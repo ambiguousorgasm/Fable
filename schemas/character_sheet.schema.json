@@ -6,8 +6,7 @@
   "required": [
     "id",
     "name",
-    "stats",
-    "resources"
+    "skills"
   ],
   "properties": {
     "id": {
@@ -16,20 +15,58 @@
     "name": {
       "type": "string"
     },
-    "stats": {
-      "type": "object"
-    },
-    "resources": {
-      "type": "object"
-    },
-    "stance": {
+    "concept": {
       "type": "string"
+    },
+    "skills": {
+      "description": "FABLE skills rated 0-4 (fable_engine.md §4).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4
+      }
     },
     "traits": {
       "type": "array",
       "items": {
         "type": "string"
       }
+    },
+    "bonds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "drive": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "gear": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stress": {
+      "description": "Short-term pressure; track of 6 boxes (fable_engine.md §14).",
+      "type": "object"
+    },
+    "scars": {
+      "description": "Lasting Truths about the character; 3 slots, Broken at 3 (fable_engine.md §14).",
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "edge": {
+      "description": "Capped personal resource; cap 3 (fable_engine.md §13).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
     },
     "notes": {
       "type": "string"

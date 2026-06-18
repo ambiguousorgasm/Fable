@@ -18,6 +18,7 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Question:** How is position/distance represented in world state?
 **Options:** (a) Abstract range bands (close/near/far). (b) Coordinates or a grid.
 **Recommendation:** Match FABLE's native spatial abstraction; the architecture is agnostic. Decide once FABLE's positioning rules are fixed.
+**Ruleset note (2026-06-17, `fable_engine.md` v4):** FABLE has *no* grid or coordinates. Position is fictional — surfaced mechanically only through the Ledger **Position** category (§10) and the **Ground** cost register (§7), and persisted as **Truths** (§12). This favors (a), or something looser than formal range bands. Still Open pending confirmation; note the perception model (phase 3) and distance queries (scenario B) must then work against fictional/Truth-based position, not metric distance — the "100 ft to the tower" example becomes a committed Truth, not a coordinate.
 **Impact:** World state, rules engine, perception model, distance-query handling.
 
 ## D-003 · Positioning queries: free OOC read vs. in-character assessment · Open · 2026-06-17
@@ -30,6 +31,7 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Question:** How does disposition affect mechanics, if at all?
 **Options:** (a) Always-on passive modifier on cooperation/social rolls. (b) Strings — a spendable relational resource for one-time, legible effects.
 **Recommendation:** (b) Strings. A passive modifier corrupts EV and incentivizes approval-farming. Whatever is chosen must pass the FABLE EV audit before going live.
+**Ruleset note (2026-06-17, `fable_engine.md` v4):** FABLE already has a spendable relational-leverage economy — **Edge** (capped at 3, §13) plus **Bonds** as Held Truths (§12). Invariant 18 and the §22 Mode rule explicitly reject new resolution subsystems ("express it through the core surfaces or reject it as subsystem growth"). So a *separate* "Strings" mechanic likely violates the ruleset's own anti-bloat invariant; disposition should probably couple by routing **through** Edge/Bonds (e.g. disposition state gates Bond invocation, compels, or Edge gain) rather than adding a new currency. This reframes option (b) rather than discarding it. Still Open; user call. **Knock-on:** if accepted, update CORE §3/§7.5 where "Strings" is named as the preferred coupling, and the phase-10 STATUS note.
 **Impact:** Disposition graph, rules engine, economy/EV balance.
 
 ## D-005 · Spotlight: director-picks-next vs. agent-bidding · Open · 2026-06-17

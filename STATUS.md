@@ -10,7 +10,7 @@ CORE §10 defines the phases and *why* they're ordered this way (dependency chai
 
 | Phase | Component(s) | Status | Notes |
 |---|---|---|---|
-| 1 | Deterministic core + event log | Designed | World state, rules engine, dice, event log with audience/visibility schema. Existing FastAPI + SQLite substrate partially covers state + persistence. |
+| 1 | Deterministic core + event log | Designed | World state, rules engine, dice, event log with audience/visibility schema. Rules-engine spec is `fable_engine.md` (Engine Schema v4); phase 1 builds only the minimal interface, not the full FABLE math. Existing FastAPI + SQLite substrate partially covers state + persistence. |
 | 2 | Access model + fact-extraction/commit | Designed | Audience tagging, commit pipeline, canon ledger, consistency check. Fact-extraction approach unresolved (D-007). |
 | 3 | Perception model | Designed | The load-bearing wall. Prototype early and stress-test. Nothing in the current substrate covers this. |
 | 4 | Context assembly | Designed | Per-POV view construction / belief-store projections. |
