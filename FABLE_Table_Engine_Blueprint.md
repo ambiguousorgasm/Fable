@@ -169,6 +169,8 @@ The deterministic core is therefore not a pre-measured world the GM queries — 
 - **Override** (logged): a deliberate revision of committed state by an authorized party, logged as intentional so the auditor reads it as fiat, not a bug. The escape hatch for rule-of-cool and self-correction.
 - **Forbidden: silent contradiction.** Negating or overwriting a committed fact without logging it as an override ("actually, you were always touching the tower").
 
+**Authority is latent (D-008).** In normal play the GM exercises its authority through *Add* and *Change via causation* — meeting player choices with friction, consequence, and adjacent hooks — not through the override. The override is the reserved exception, for genuine coherence-breaks and table-safety; the AI GM holds it and the human player is the co-authority and final backstop. Default to "yes-and / yes-but," and let every "yes-but" leave a mechanical mark (a clock advances, a Truth or Edge changes) so consequence is real rather than narrated away. The aim is high felt agency with coherence held by structural authority that stays mostly out of sight.
+
 The frame: **the GM authors the geometry; the engine enforces the physics.** The GM can place the tower anywhere, but once placed, it is as bound by the distance as anyone.
 
 ### 6.3 Belief stores as projections
@@ -208,6 +210,8 @@ Owns graceful improvisation. Player agency is **sovereign over the plot**: the e
 
 - If a fixture is destroyed (the quest-giver dies), the *function* persists (the player still needs the hint) and is re-bound to a new fixture (a journal, a rival faction, a clue at the scene).
 - If players diverge by *interest* (fixating on a discarded thread), the plot-manager promotes it: spins up a front, gives it stakes, and seeks a latent connection to existing structure.
+
+The plot is held as a *loose structure* — fronts, factions, clocks, unresolved tensions, standing forces with their own momentum — rather than a fixed event sequence, so the GM has something solid to react from while the actual sequence of events stays emergent. *(Who writes the plot graph — a single authority vs. distributed proposal with a centralized coherence-check — is open: D-016.)*
 
 The discipline that keeps flexibility from becoming incoherence: **the plot-manager may edit only the hidden, not-yet-revealed portion of the plot graph; it may never contradict the canon ledger.** Future is fluid; disclosed past is immutable. Players see only in-fiction consequences, never the revision — at a real table, good improvisation is invisible, and here it is invisible because the plot graph is in no player's audience. The plot-manager is also the home for accumulated interest signals (from distance queries, behavior, dialogue focus), giving the GM a model of where the table is leaning.
 
@@ -283,11 +287,11 @@ These are tracked as a living log in `DECISIONS.md` (open and resolved, each wit
 - Spotlight: director-picks-next vs. agent-bidding/raise-hand.
 - NPC management: GM puppets minor NPCs ad hoc vs. dedicated NPC-manager agent.
 - Fact-extraction: post-hoc extraction pass vs. GM-emitted structured commitment block.
-- Override authority: who may invoke it, and how it is surfaced and logged.
 - Canon ledger: separate store vs. a view over committed-and-disclosed events.
 - Disposition-delta recognition: deterministic rule table vs. model-proposed deltas (the disposition engine is the authoritative writer either way).
 - Generative scene imagery: text + voice only vs. an impressionistic per-scene AI image (interface phase; §12).
 - Configurable seats: the fixed one-human shape vs. human/AI in any role and multi-participant (§12 multi-human extension).
+- Plot-graph ownership: single authority vs. distributed proposal with a centralized coherence-check.
 
 See `DECISIONS.md` for the reasoning and any resolutions.
 

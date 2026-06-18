@@ -40,7 +40,8 @@ These run on LLM inference. They live *above* the determinism boundary: they pro
 - **Depended-on-by:** Access matrix (overhear path; trivial-action perception); interface (NPC channels).
 
 ### Plot-manager agent
-- **Purpose:** Owns the *future*. Holds the plot graph; detects divergence; re-binds plot **functions** to new **fixtures**; promotes high-interest threads; accumulates player-interest signals. Edits only the hidden graph, never the canon ledger.
+- **Purpose:** Owns the *future*. Holds the plot graph as a loose structure of fronts, factions, clocks, and unresolved tensions (standing forces with momentum, not a fixed sequence); detects divergence; re-binds plot **functions** to new **fixtures**; promotes high-interest threads; accumulates player-interest signals. Edits only the hidden graph, never the canon ledger.
+- **Ownership (D-016, leaning distributed-proposal/single-writer):** the plot-manager is the **sole authoritative writer** of the plot graph; other agents (GM, character agents, disposition engine) may *propose* revisions but never edit it directly, mirroring the disposition engine (D-004). Coherence is enforced by the canon-ledger boundary (phase-2 consistency-check) plus the auditor. Revision is first-class (promote a thread, escalate a faction, retire a stale front), but salience-gated — evaluate input for promotion, don't promote everything.
 - **Kind:** Agent (model), GM-side, never in any player/TM audience.
 - **Reads:** Plot graph; event log (for divergence detection and interest signals); canon ledger (as the immutable boundary it may not cross); world state.
 - **Writes:** Plot graph (hidden nodes, fixture bindings, new fronts/clocks); interest-signal accumulator.
@@ -182,7 +183,7 @@ Not components (no model, service, or store of their own), but referenced by com
 - **What it is:** A deliberate, logged revision of committed state — recorded as an event (`type: override`) carrying an author and a reason. The `event.schema.json` `type` field is already free-form, so no schema change is needed.
 - **How it works:** The auditor keys off the override marker to read the change as **intentional fiat rather than a bug** (CORE §3, §6.2). This is what distinguishes a sanctioned rule-of-cool / self-correction from the one forbidden move (silent contradiction).
 - **MVP default (D-008):** no unstructured overrides; every override is an explicit logged event with author and reason.
-- **Open (D-008):** *who* may author an override (human director / GM agent / separate meta-agent) and exactly how it surfaces.
+- **Authority (D-008, Resolved):** the AI GM holds override authority; the human player is co-authority and backstop (final say, table-safety). Override is the **reserved exception** — normal GM authority is *latent*, exercised through Add / Change-via-causation (§6.2) and plot-bending (§7.4), so divergence meets friction, consequence, and adjacent hooks rather than veto. Reserve override for genuine coherence-breaks and table-safety.
 - **Depends on:** Event log (carries the override event), auditor (intentional-vs-bug distinction).
 - **Depended-on-by:** Auditor (treats flagged overrides as fiat); CORE §6.2 forbidden-move boundary.
 

@@ -61,11 +61,14 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Recommendation:** Undecided — prototype both; this is a high-leverage early decision (see CORE §7.3).
 **Impact:** Fact-extraction pipeline, GM output contract, auditor reliability.
 
-## D-008 · Override authority · Open · 2026-06-17
+## D-008 · Override authority · Resolved · 2026-06-18
 **Question:** Who may invoke a deliberate override of committed state, and how is it surfaced and logged?
-**Options:** A human director; the GM agent itself; a separate meta-agent — and in each case, how the log marks it intentional so the auditor reads fiat, not bug.
-**Recommendation:** Undecided. At minimum, every override is logged as intentional with an author; the auditor keys off that flag.
-**Impact:** Auditor, event-log schema, GM authority model.
+**Decision:** The **AI GM holds authoring and override authority** over world-state and consequence; the **human player is the co-authority and backstop** (final say, table-safety) and may also override. Every override remains an explicit logged `override` event with author and reason, which the auditor reads as intentional fiat (mechanism unchanged from phase 2).
+The substance is *when*, not just *who*. Override is the **reserved exception**, not the working tool. The GM's authority is **latent**: in normal play it is exercised through the other two legal modes — Add by fiat and Change via causation (§6.2) — and through plot-bending (§7.4), so player choices meet friction, consequence, and adjacent hooks rather than veto. Overt override is reserved for genuine coherence-breaks and table-safety. Default stance is "yes-and / yes-but," and every "yes-but" must leave a **mechanical mark** in deterministic state (a clock ticks, a front advances, a Truth or Edge changes) so consequence is real, not narrated away.
+**Rationale:** Delivers high felt agency with coherence held by latent structural authority. Most of what reads as "GM authority" is not the override path at all — it is Add + Causation — so the forbidden move (silent contradiction) is never approached in normal play. Aligns with §7.4 (agency sovereign over plot; never negate to protect a script) and principle 4 (honesty enforceable).
+**Design intent → future criteria:** two properties should become testable success criteria (CORE §13) once the GM/plot phases make them measurable — (1) overt redirections trend toward ~zero per session (divergence absorbed via causation/re-bind, not veto); (2) every "yes-but" commits a mechanical consequence. Recorded here; added to §13 when measurable.
+**Relates to:** §6.2 (legal modes), §7.4 (plot-manager), D-016 (the same latent-authority split at the structural level), the auditor (phase 8), D-007 (still open).
+**Impact:** GM agent behavior/prompts, auditor, the override protocol (`COMPONENTS.md`), plot-manager.
 
 ## D-009 · Canon ledger: separate store vs. view over events · Open · 2026-06-17
 **Question:** Is the canon ledger a distinct store, or a query over committed-and-disclosed events?
@@ -116,6 +119,15 @@ When a decision is resolved, change its status and date, record the choice, and 
 **Relates to:** CORE §12 (multi-human must-not-preclude), §4.3 blackboard, character agents (phase 6), orchestrator (phase 7), D-006 (NPC handling), interface (phase 11).
 **Impact:** A participant/seat abstraction, orchestrator turn routing, the agent layer (agents become optional per seat), interface (multi-client), identity/auth.
 
+## D-016 · Plot-graph ownership: single authority vs. distributed proposal · Open · 2026-06-18
+**Question:** Who owns the plot graph — a single authority that holds and edits it, or shared persistent state that multiple agents read and propose revisions to, with something arbitrating coherence?
+**Context:** Plot is held as a *loose structure* — fronts, factions, clocks, unresolved tensions (standing forces with momentum), not a fixed event sequence (§7.4; already the design). Plot **revision** is a first-class operation: promote a player thread into the standing structure, escalate a faction, retire a stale front, fold an accident into the throughline — but only above the canon line (hidden future is fluid; revealed past is immutable — §7.4 / §6.2 forbidden move). "Retroactively" therefore means re-*interpreting* and connecting, never changing what players were already told.
+**Options:** (a) Single authority — the plot-manager holds and edits the plot alone. (b) Distributed proposal + centralized coherence-check — any agent may *propose* a plot revision; one authoritative writer commits it after a coherence-check.
+**Recommendation:** (b), realized as the **disposition pattern (D-004 / §7.5) applied to plot**: the **plot-manager is the single authoritative writer**; other agents (GM, character agents, disposition engine) *propose* revisions through it; coherence is enforced by the **canon-ledger boundary** (the phase-2 consistency-check — plot may never contradict canon) plus the **auditor** (phase 8). This mirrors, at the structural level, the felt-agency / latent-authority split D-008 sets moment-to-moment (blackboard, §4.3: agents propose to a mediator, never write shared state directly).
+**Risk to weigh:** the hard part is salience, not plumbing. The plot-manager must *evaluate* player input for promotion against an interest/salience threshold (the interest-signal accumulator), not promote everything — or the world bloats into incoherence (everything matters → nothing matters). The "obligation" is to evaluate and let the worthy rise, not to promote all input.
+**Relates to:** §4.3 (blackboard), §7.4 (plot-manager), D-004 / §7.5 (the pattern being reused), D-006 (NPC proposal handling), D-008 (same principle, moment-to-moment), the auditor (phase 8). Build deferred to phase 9; ownership shape recorded now.
+**Impact:** Plot-manager (sole writer), plot graph store, GM / character agents (propose), auditor (coherence gate), beat-loop divergence handling.
+
 ## MVP Implementation Defaults
 
 These are implementation defaults used until a decision is formally resolved. They are not final design resolutions unless moved into `Resolved` with an updated decision record.
@@ -127,7 +139,7 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-005:** Start with director-picks-next spotlight. Prototype agent bidding only after a cost/latency budget exists.
 - **D-006:** Let the GM puppet walk-on NPCs for MVP; promote recurring NPCs later.
 - **D-007:** Start with GM-emitted structured commitment blocks for reliability; later prototype post-hoc extraction. *(Exercised in phase 2: `CommitPipeline.commit` takes structured `Commitment`s directly; no prose-extraction pass exists yet.)*
-- **D-008:** Do not allow unstructured overrides in MVP. If an override is needed, require an explicit logged override event with author and reason. *(Exercised in phase 2: `commit(override=True, reason=...)` logs an `override`-type event and refuses an override with no reason. Author identity / who-may-override still Open.)*
+- **D-008:** *Resolved* — AI GM holds override authority, human is co-authority/backstop; override is the reserved exception, normal authority exercised via Add/Causation and plot-bending. Mechanism (logged override + reason) built in phase 2.
 - **D-009:** Implement the canon ledger as a view over committed-and-disclosed events unless performance requires materialization. *(Exercised in phase 2: `canon_ledger()` is a pure fold over the log, not a materialized store.)*
 - **D-012:** Thin zone-based propagation — binary open/closed connections, whole-zone audibility, one-hop loud carry, lit/dark line of sight, closeness Truths for whisper. *(Built in phase 3; stress-tested. Overhears degrade to a vague hint (fail-safe under-disclosure); richer attenuation/occlusion and "fully overheard content" deferred.)*
 - **D-013:** *Resolved* — per-POV contiguous index in `project_for` (option (b)); the global-`sequence` side-channel is closed.
@@ -140,3 +152,4 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-004** · Disposition→mechanics coupling → through FABLE's native Edge/Bonds; no passive modifier, no separate "Strings" currency · 2026-06-17.
 - **D-010** · Proposal/action queue → transient, non-authoritative buffer (not events on the log) · 2026-06-17.
 - **D-013** · Per-POV event ordering → per-POV contiguous index in `project_for`; global-`sequence` side-channel closed · 2026-06-18.
+- **D-008** · Override authority → AI GM holds it (human co-authority/backstop); override is the reserved exception, authority normally latent via Add/Causation + plot-bending · 2026-06-18.

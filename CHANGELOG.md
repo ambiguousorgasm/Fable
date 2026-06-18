@@ -4,6 +4,16 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-18 — Resolved D-008 (override authority); opened D-016 (plot ownership)
+
+Settled the GM-authority philosophy before Phase 5 and recorded the plot-ownership fork it implies. No code change — both concern model behavior and the plot layer (phases 5/9); the override mechanism itself was already built in phase 2.
+
+- **D-008 → Resolved:** the AI GM holds authoring + override authority over world-state and consequence; the human player is co-authority and backstop. The substance is *latent authority* — in normal play the GM acts through **Add** and **Change-via-causation** (and plot-bending), meeting choices with friction, consequence, and adjacent hooks rather than veto; overt override is the reserved exception for coherence-breaks and table-safety. Default "yes-and / yes-but," with every "yes-but" leaving a mechanical mark (clock/front/Truth/Edge) so consequence is real. Recorded two properties as future §13 criteria (overt-redirections → ~0; yes-but commits a consequence).
+- **D-016 → Opened:** plot-graph ownership. Plot is a loose structure of fronts/factions/tensions (already the §7.4 design), with revision as a first-class, salience-gated operation. Recommends the disposition pattern (D-004) applied to plot — plot-manager as sole authoritative writer, other agents propose, coherence enforced by the canon boundary + auditor — mirroring the latent-authority split at the structural level. Build deferred to phase 9.
+- Updated CORE §6.2 (latent-authority stance), §7.4 (loose-structure plot + D-016 pointer), §11 index (removed Override authority, added Plot-graph ownership); `COMPONENTS.md` override protocol + plot-manager entries; STATUS auditor row.
+
+---
+
 ## 2026-06-18 — Opened D-014 (scene imagery) and D-015 (configurable seats)
 
 Captured two forward-looking feature ideas as open decisions rather than building them (brainstorming is not canon). Both are anticipated by CORE §12, so neither contradicts the spec.

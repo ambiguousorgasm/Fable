@@ -17,7 +17,7 @@ CORE §10 defines the phases and *why* they're ordered this way (dependency chai
 | 5 | Cold/warm GM split | Designed | Adjudicator + stakes gate + narrator + world-simulator. Highest-leverage for "lifelike" feel. |
 | 6 | Character agents | Designed | Persona + goals + belief store, one per teammate. |
 | 7 | Orchestrator / spotlight | Partial substrate | Director-pattern turn routing with `[SPOTLIGHT:]` tags exists in the playtest harness; TTS turn-gating partially explored. Needs port into this architecture. Drains the transient action queue (proposal buffer) it arbitrates. |
-| 8 | Auditor | Designed | Live validation gates against committed state. Conceptually an extension of existing FABLE validation-gate testing, run live. Override is a logged `override` event the auditor reads as fiat, not a bug (authority open: D-008). |
+| 8 | Auditor | Designed | Live validation gates against committed state. Conceptually an extension of existing FABLE validation-gate testing, run live. Override is a logged `override` event the auditor reads as fiat, not a bug (authority resolved, D-008: AI GM holds it, human is backstop; override is the reserved exception). |
 | 9 | Plot-manager | Designed | Function/fixture re-binding, hidden-graph revision, interest signals. |
 | 10 | Disposition system | Designed | Multi-axis graph, event-derived deltas; couples through Edge/Bonds — no passive modifier, no separate currency (D-004, Resolved). The disposition engine is the authoritative delta-writer; trigger-recognition mechanism open (D-011). |
 | 11 | Interface + voice | Partial substrate | React/TypeScript front end and ElevenLabs TTS exist in current implementations; per-character channels/whisper/OOC need building to spec. |
