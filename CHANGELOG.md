@@ -4,6 +4,25 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Phase 22: lorebook prompt injection + cost-ceiling surface (1248 tests)
+
+**Lorebook injected into all three prompt paths** (`context.py`, `gm.py`, `character_agent.py`, `beat.py`):
+
+- `ContextAssembler.lore_block(store, pov) -> str` — convenience wrapper: matches + formats in one call; returns `""` when no assembler or no match, so callers inject unconditionally without branching.
+- `AdjudicatorGM.evaluate()` gains `lore_context: str = ""` — inserted between recent events and declared action when non-empty. Existing callers unchanged.
+- `NarratorGM.narrate()` gains `lore_context: str = ""` — prepended before player context so background precedes scene view. Existing callers unchanged.
+- `CharacterAgent.propose()` calls `assembler.lore_block(store, entity_id)` and passes result to `_build_user_message(lore_context=...)`. `_build_user_message` gains `lore_context: str = ""` injected at top before relationships.
+- `BeatRunner.run()` builds `gm_lore` and `player_lore` after belief stores; forwards each to the matching GM call. Audience gate is structural end-to-end — `gm_only` entries cannot reach player prompts regardless of keyword overlap.
+
+**Cost-ceiling surface** (`interface.py`, `tests/test_phase21_interface.py`):
+
+- `PlayInterface` gains `sink: TelemetrySink | None = None`. `render_status()` appends `[cost: WARNING]` or `[cost: EXCEEDED]` when `sink.ceiling_status()` is non-OK. Alert shows even when `world=None` — never silently suppressed.
+- `build_play_interface()` gains `sink=None` forwarded to `PlayInterface`.
+
+27 new tests: `test_phase22_lore_injection.py` (20) + cost-ceiling tests in `test_phase21_interface.py` (8 + 1 wiring).
+
+---
+
 ## 2026-06-19 — `build_play_interface()` full wiring (1221 tests)
 
 **`interface.py` factory wired** (`interface.py`, `tests/test_phase21_interface.py`):
