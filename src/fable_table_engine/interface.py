@@ -8,7 +8,7 @@ deliverable 10 and D-041.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .campaign import CampaignPackage, load_campaign
 from .console import PlaytestSession
@@ -144,9 +144,97 @@ class PlayInterface:
         """Submit a player action and return new entitled display lines."""
         return self._session.step(text)
 
+    def submit_both(self, text: str) -> tuple[list[str], list[dict]]:
+        """Submit an action and return ``(text_lines, gui_events)`` in one call."""
+        return self._session.step_both(text)
+
     def history(self) -> list[str]:
         """Return all entitled display lines from the current session."""
         return self._session.player_view()
+
+    def history_json(self) -> list[dict]:
+        """Full entitled event stream as typed GUI dicts (for session resume)."""
+        return self._session.history_json()
+
+    def session_state(self) -> dict:
+        """Return current character/clock/scene snapshot for the browser GUI.
+
+        Reads only from ``self._world`` (already available on PlayInterface).
+        Character stats are sourced from entity.resources, which EffectExecutor
+        keeps in sync with the deterministic state.
+        """
+        player_id = self._session.player_id
+        world = self._world
+        characters: dict = {}
+        clocks: list = []
+        scene: dict = {}
+
+        if world is not None:
+            for eid, entity in world.entities.items():
+                res = entity.resources
+                stress_val = int(res.get("stress", 0))
+                edge_val = int(res.get("edge", 0))
+                scars_raw: list = list(res.get("scars", []))
+                scars_padded: list = [
+                    {"type": s.get("scar_type", "Wound"), "label": s.get("description", "")}
+                    if isinstance(s, dict) else {"type": "Wound", "label": str(s)}
+                    for s in scars_raw
+                ] + [None] * max(0, 3 - len(scars_raw))
+                characters[eid] = {
+                    "id": eid,
+                    "kind": "you" if eid == player_id else "ally",
+                    "name": entity.name or eid,
+                    "concept": str(res.get("concept", "")),
+                    "role": str(res.get("role", "")),
+                    "presence": str(res.get("presence", "present")),
+                    "presenceNote": str(res.get("presence_note", "")),
+                    "edge": {"val": edge_val, "max": 3},
+                    "stress": {"val": stress_val, "max": 6},
+                    "scars": scars_padded[:3],
+                    "scarsList": [
+                        {"kind": s["type"], "text": s["label"]}
+                        for s in scars_padded if s
+                    ],
+                    "skills": _skills_list(res.get("skills", {})),
+                    "traits": list(res.get("traits", [])),
+                    "bonds": list(res.get("bonds", [])),
+                    "advances": int(res.get("advances", 0)),
+                    "activity": str(res.get("activity", "")),
+                    "condition": str(res.get("condition", "")),
+                    "gear": list(res.get("gear", [])),
+                    "visibleGear": [],
+                    "drive": str(res.get("drive", "")),
+                    "question": str(res.get("question", "")),
+                }
+
+            for cname, cdata in world.clocks.items():
+                if not isinstance(cdata, dict):
+                    continue
+                size = int(cdata.get("size", 4))
+                filled = int(cdata.get("filled", 0))
+                clocks.append({
+                    "id": cname,
+                    "name": cname.replace("-", " ").replace("_", " ").title(),
+                    "size": size,
+                    "filled": filled,
+                    "domain": str(cdata.get("domain", "threat")),
+                })
+
+            scene = {
+                "phase": world.scene_phase,
+                "beat_index": world.beat_index,
+                "time_label": world.prose_time_label or "",
+            }
+
+        crew_order = [k for k, v in characters.items() if v["kind"] == "you"] + \
+                     [k for k, v in characters.items() if v["kind"] == "ally"]
+        return {
+            "player_id": player_id,
+            "characters": characters,
+            "crew_order": crew_order,
+            "clocks": clocks,
+            "scene": scene,
+        }
 
     def export_transcript(self) -> str:
         """Full entitled event stream as newline-separated text."""
@@ -216,6 +304,65 @@ class PlayInterface:
             "Settings are read from JSON files and take effect on next session open."
         )
         return "\n".join(lines)
+
+
+def _skills_list(raw: object) -> list[dict]:
+    """Normalise skills resource to [{name, r}] regardless of source format."""
+    if isinstance(raw, dict):
+        return [{"name": k, "r": int(v)} for k, v in raw.items()]
+    if isinstance(raw, list):
+        result = []
+        for s in raw:
+            if isinstance(s, dict):
+                result.append({"name": str(s.get("name", "")), "r": int(s.get("r", s.get("rank", 0)))})
+            else:
+                result.append({"name": str(s), "r": 0})
+        return result
+    return []
+
+
+def bootstrap_opening(log: Any, player_id: str, campaign: CampaignPackage) -> None:
+    """Emit opening narration events for a new session seeded by a campaign package.
+
+    Commits up to two GM narration events into the event log so the player
+    sees them immediately on session open, before the first player action:
+      1. ``player_intro`` — the player-facing premise/backstory.
+      2. ``starting_scene`` — the opening scene description (if different from intro).
+
+    Skipped if the campaign has no intro or scene text. The events appear in
+    ``history_json()`` / ``PlayInterface.history_json()`` automatically because
+    both read from the same append-only log.
+
+    ``gm_context`` and ``initial_hidden_truths`` are never emitted here — they
+    remain available only to the GM via the session's system context.
+    """
+    from .access import CommitPipeline
+
+    intro = (campaign.player_intro or "").strip()
+    scene_text = (campaign.starting_scene or "").strip()
+    if not intro and not scene_text:
+        return
+
+    pipeline = CommitPipeline(log)
+    audience: tuple[str, ...] = (player_id, "gm")
+
+    if intro:
+        pipeline.commit(
+            author="gm",
+            channel="public",
+            type="narration",
+            content=intro,
+            audience=audience,
+        )
+
+    if scene_text and scene_text != intro:
+        pipeline.commit(
+            author="gm",
+            channel="public",
+            type="narration",
+            content=scene_text,
+            audience=audience,
+        )
 
 
 def build_play_interface(

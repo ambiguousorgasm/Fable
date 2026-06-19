@@ -108,6 +108,7 @@ from .perception import (
     perceptible_entities,
 )
 from .campaign import CampaignPackage, load_campaign, load_campaign_dict
+from .compiler import CampaignCompiler, CampaignCompilerGateway, CompilerError
 from .disposition import (
     DispositionAxis,
     DispositionDelta,
@@ -128,7 +129,7 @@ from .persistence import (
     attach_disposition,
     open_session,
 )
-from .interface import HomeScreen, PlayInterface, build_play_interface
+from .interface import HomeScreen, PlayInterface, bootstrap_opening, build_play_interface
 from .rules import Band, CheckResult, RulesEngine, band_for_margin
 from .settings import SettingsManager, SettingsRegistry, load_settings, reset_setting
 from .world_state import ELAPSED_CATEGORIES, Entity, WorldState
@@ -225,6 +226,7 @@ __all__ = [
     "ProjectedEvent",
     "HomeScreen",
     "PlayInterface",
+    "bootstrap_opening",
     "build_play_interface",
     "RulesEngine",
     "SettingsManager",
@@ -232,6 +234,9 @@ __all__ = [
     "load_settings",
     "reset_setting",
     "CampaignPackage",
+    "CampaignCompiler",
+    "CampaignCompilerGateway",
+    "CompilerError",
     "SQLiteEventLog",
     "SQLitePlotGraph",
     "TypedEffect",

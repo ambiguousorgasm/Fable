@@ -251,6 +251,7 @@ _ROLE_TO_SETTINGS_KEY: dict[str, str] = {
     "adjudicator": "gm_adjudicator_model",
     "narrator": "gm_narrator_model",
     "character_agent": "character_agent_default_model",
+    "campaign_compiler": "campaign_compiler_model",
 }
 
 _FALLBACK_MODEL = "claude-opus-4-8"

@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import anthropic
 
 from .campaign import CampaignPackage, load_campaign
+from .compiler import CampaignCompiler, CampaignCompilerGateway, CompilerError
 from .cli import (
     _build_interface,
     _campaign_file_id,
@@ -24,7 +25,7 @@ from .cli import (
     _load_campaign_by_index,
     load_dotenv,
 )
-from .interface import HomeScreen, PlayInterface
+from .interface import HomeScreen, PlayInterface, bootstrap_opening
 from .persistence import SessionManager, SQLiteEventLog
 from .provider import ModelGateway, TelemetrySink
 from .settings import SettingsManager
@@ -126,6 +127,10 @@ class WebAppState:
             log=log,
             iface=iface,
         )
+
+        if campaign:
+            bootstrap_opening(log, iface.player_id, campaign)
+
         return self._session_payload(manifest.session_id)
 
     def resume_session(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -172,7 +177,7 @@ class WebAppState:
         text = str(payload.get("text") or "").strip()
         if not text:
             raise ValueError("Action text is required.")
-        lines = active.iface.submit(text)
+        lines, events = active.iface.submit_both(text)
         self.session_manager.update_manifest(
             session_id,
             last_scene_summary=text[:120],
@@ -180,7 +185,11 @@ class WebAppState:
         return {
             "session": self._session_payload(session_id),
             "lines": lines,
+            "events": events,
         }
+
+    def session_state(self, session_id: str) -> dict[str, Any]:
+        return self._active(session_id).iface.session_state()
 
     def save_session(self, session_id: str) -> dict[str, Any]:
         self._active(session_id)
@@ -198,6 +207,7 @@ class WebAppState:
             "campaign_id": active.campaign_id,
             "status": active.iface.render_status(),
             "history": active.iface.history(),
+            "events": active.iface.history_json(),
         }
 
     def _active(self, session_id: str) -> ActiveSession:
@@ -205,6 +215,36 @@ class WebAppState:
             return self.active[session_id]
         except KeyError as exc:
             raise KeyError("Session is not open in this browser process. Resume it from Home.") from exc
+
+    def generate_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /api/campaign/generate — compile raw prompt → validated CampaignPackage → save.
+
+        Payload: { "prompt": str }
+        Returns: { "campaign_id": str, "title": str, "description": str, "player_intro": str }
+
+        The raw prompt is used only as compiler source material and is never placed
+        in GM context, narrator context, or any player-facing surface (D-040).
+        """
+        prompt = str(payload.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("'prompt' is required")
+
+        gateway, _sink = self._make_gateway(None)
+        compiler = CampaignCompiler(gateway)
+        gw = CampaignCompilerGateway(compiler)
+        package = gw.generate(prompt)
+
+        self.campaigns_dir.mkdir(parents=True, exist_ok=True)
+        campaign_id = _campaign_file_id(self.campaigns_dir, package)
+        dest = self.campaigns_dir / f"{campaign_id}.json"
+        dest.write_text(_package_to_json(package), encoding="utf-8")
+
+        return {
+            "campaign_id": campaign_id,
+            "title": package.title,
+            "description": package.description,
+            "player_intro": package.player_intro,
+        }
 
     def _campaign_for_id(self, campaign_id: str) -> CampaignPackage | None:
         if campaign_id == "blank":
@@ -235,9 +275,14 @@ def create_handler(state: WebAppState):
             parsed = urlparse(self.path)
             try:
                 if parsed.path == "/":
-                    self._send_html(INDEX_HTML)
+                    gui_path = Path(__file__).parent / "_gui" / "index.html"
+                    html = gui_path.read_text(encoding="utf-8") if gui_path.exists() else INDEX_HTML
+                    self._send_html(html)
                 elif parsed.path == "/api/home":
                     self._send_json(state.api_home())
+                elif parsed.path.startswith("/api/session/") and parsed.path.endswith("/state"):
+                    session_id = parsed.path.removeprefix("/api/session/").removesuffix("/state").strip("/")
+                    self._send_json(state.session_state(session_id))
                 elif parsed.path.startswith("/api/session/"):
                     session_id = parsed.path.removeprefix("/api/session/").strip("/")
                     self._send_json(state._session_payload(session_id))
@@ -269,6 +314,9 @@ def create_handler(state: WebAppState):
                 if parsed.path.startswith("/api/session/") and parsed.path.endswith("/settings"):
                     session_id = parsed.path.removeprefix("/api/session/").removesuffix("/settings").strip("/")
                     self._send_json(state.settings_text(session_id))
+                    return
+                if parsed.path == "/api/campaign/generate":
+                    self._send_json(state.generate_campaign(payload))
                     return
                 self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             except Exception as exc:
@@ -321,6 +369,67 @@ def create_handler(state: WebAppState):
             self._send_json({"error": str(exc)}, status=status)
 
     return FableHandler
+
+
+def _package_to_json(pkg: CampaignPackage) -> str:
+    """Serialize a CampaignPackage back to JSON for on-disk storage."""
+    from .plot_graph import FunctionNode, Hook, Front, Faction, FixtureBinding
+
+    def _fn(node: FunctionNode) -> dict[str, Any]:
+        return {"id": node.id, "description": node.description, "required": node.required}
+
+    def _binding(b: FixtureBinding) -> dict[str, Any]:
+        return {
+            "function_id": b.function_id,
+            "fixture_entity_id": b.fixture_entity_id,
+            "description": b.description,
+        }
+
+    hooks_out = []
+    for h in pkg.hooks:
+        entry: dict[str, Any] = {
+            "function_id": h.function_id,
+            "binding": _binding(h.binding),
+            "active": h.active,
+        }
+        if h.preconditions:
+            entry["preconditions"] = list(h.preconditions)
+        alts = pkg.alternative_fixtures.get(h.function_id, [])
+        if alts:
+            entry["alternatives"] = [_binding(a) for a in alts]
+        hooks_out.append(entry)
+
+    data: dict[str, Any] = {
+        "version": pkg.version,
+        "title": pkg.title,
+        "description": pkg.description,
+        "player_intro": pkg.player_intro,
+        "gm_context": pkg.gm_context,
+        "starting_scene": pkg.starting_scene,
+        "starting_location": pkg.starting_location,
+        "initial_visible_truths": list(pkg.initial_visible_truths),
+        "initial_hidden_truths": list(pkg.initial_hidden_truths),
+        "function_nodes": [_fn(n) for n in pkg.function_nodes],
+        "hidden_nodes": [_fn(n) for n in pkg.hidden_nodes],
+        "factions": [
+            {"id": f.id, "name": f.name, "goals": list(f.goals), "momentum": f.momentum}
+            for f in pkg.factions
+        ],
+        "world_clocks": [dict(c) for c in pkg.world_clocks],
+        "fronts": [
+            {
+                "id": fr.id, "name": fr.name, "threat": fr.threat,
+                "clock_name": fr.clock_name, "consequence_truth": fr.consequence_truth,
+                **({"faction_id": fr.faction_id} if fr.faction_id else {}),
+            }
+            for fr in pkg.fronts
+        ],
+        "hooks": hooks_out,
+        "npcs": [dict(n) for n in pkg.npcs],
+        "tone_boundaries": dict(pkg.tone_boundaries),
+        "lore_entries": [dict(le) for le in pkg.lore_entries],
+    }
+    return json.dumps(data, indent=2, ensure_ascii=False)
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765, *, open_browser: bool = True) -> int:

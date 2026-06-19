@@ -16,6 +16,7 @@ Architecture invariants kept here:
 
 from __future__ import annotations
 
+import re as _re
 from typing import Any
 
 from .beat import BeatRunner
@@ -150,6 +151,125 @@ def render_event(event: ProjectedEvent) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
+# Structured JSON event renderer (for browser GUI)                              #
+# --------------------------------------------------------------------------- #
+
+def _parse_dice_content(content: str) -> dict:
+    """Parse '3d6 = [3, 5, 2] = 10 (reason)' into a dict of dice fields."""
+    m = _re.search(r'(\d+)d(\d+)\s*=\s*\[([^\]]+)\]\s*=\s*(\d+)(?:\s*\(([^)]*)\))?', content)
+    if not m:
+        return {}
+    rolled = [int(x.strip()) for x in m.group(3).split(",") if x.strip().lstrip("-").isdigit()]
+    reason = m.group(5) or ""
+    skill_m = _re.match(r'([A-Za-z][A-Za-z\s]*?)\s+vs\s+TN', reason)
+    tn_m = _re.search(r'vs\s+TN\s+(\d+)', reason)
+    return {
+        "pool": int(m.group(1)),
+        "rolled": rolled,
+        "total": int(m.group(4)),
+        "skill": skill_m.group(1).strip() if skill_m else "check",
+        "tn_hint": int(tn_m.group(1)) if tn_m else None,
+    }
+
+
+def _parse_resolution_content(content: str) -> dict:
+    """Parse 'actor: 3d6+N = T vs TN M -> margin X -> Band' into a dict."""
+    m = _re.search(
+        r'3d6\+(\d+)\s*=\s*(\d+)\s*vs\s*TN\s*(\d+)\s*->\s*margin\s*([+-]?\d+)\s*->\s*(\w+)',
+        content,
+    )
+    if not m:
+        return {}
+    return {
+        "rating": int(m.group(1)),
+        "total": int(m.group(2)),
+        "tn": int(m.group(3)),
+        "margin": int(m.group(4)),
+        "band": m.group(5).lower(),
+    }
+
+
+def _combine_dice_events(events: list[dict]) -> list[dict]:
+    """Merge consecutive _dice_partial + _resolution pairs into a single dice event.
+
+    The browser GUI shows one dice card per roll. The backend emits two events
+    (dice_roll for the die faces, resolution for skill/TN/band). This function
+    folds them into the shape DiceLine expects: {kind, rolled, pool, skill,
+    rating, tn, result}. Orphans fall back to system text.
+    """
+    result: list[dict] = []
+    i = 0
+    while i < len(events):
+        ev = events[i]
+        if ev.get("_kind") == "_dice_partial" and i + 1 < len(events):
+            nxt = events[i + 1]
+            if nxt.get("_kind") == "_resolution":
+                result.append({
+                    "kind": "dice",
+                    "rolled": ev.get("rolled", []),
+                    "pool": ev.get("pool", 3),
+                    "skill": nxt.get("skill_name") or ev.get("skill", "check"),
+                    "rating": nxt.get("rating", 0),
+                    "tn": nxt.get("tn") or ev.get("tn_hint") or 10,
+                    "result": nxt.get("band", "cost"),
+                    "total": nxt.get("total", ev.get("total", 0)),
+                })
+                i += 2
+                continue
+        # Orphan dice partial: show raw text
+        if ev.get("_kind") == "_dice_partial":
+            result.append({"kind": "system", "text": ev.get("raw", "")})
+        # Orphan resolution (no preceding dice): show inline
+        elif ev.get("_kind") == "_resolution":
+            result.append({"kind": "system", "text": ev.get("raw", "")})
+        else:
+            result.append(ev)
+        i += 1
+    return result
+
+
+def render_event_json(event: ProjectedEvent) -> dict | None:
+    """Format one entitled event as a JSON-safe dict for the browser GUI client.
+
+    Returns None for events that should not reach the frontend. Uses internal
+    ``_kind`` tags for dice pairing (consumed by ``_combine_dice_events``
+    before being sent to the client).
+
+    Sender kinds understood by the GUI: gm, ally, npc, system, dice.
+    """
+    if event.type == "narration" and event.content:
+        kind = "gm" if event.author in ("gm", "GM") else "ally"
+        d: dict = {"kind": kind, "text": event.content}
+        if kind == "ally":
+            d["who"] = event.author
+        if event.superseded_by:
+            d["superseded"] = True
+        return d
+    if event.type == "ooc" and event.content:
+        return {"kind": "system", "text": f"[OOC] {event.author}: {event.content}"}
+    if event.type == "correction" and event.content:
+        return {"kind": "system", "text": f"[correction] {event.content}"}
+    if event.type == "retcon" and event.content:
+        return {"kind": "system", "text": f"[retcon] {event.content}"}
+    if event.type == "dice_roll" and event.content:
+        if event.roll_visibility == "gm_only":
+            return None
+        parsed = _parse_dice_content(event.content)
+        return {"_kind": "_dice_partial", "raw": event.content, **parsed}
+    if event.type == "resolution" and event.content:
+        if event.roll_visibility == "gm_only":
+            return None
+        parsed = _parse_resolution_content(event.content)
+        # Carry the skill name from "actor: 3d6+N..." prefix
+        actor_m = _re.match(r'^([^:]+):\s*', event.content)
+        return {"_kind": "_resolution", "raw": event.content,
+                "skill_name": actor_m.group(1).strip() if actor_m else None, **parsed}
+    if event.type == "front_advance" and event.content:
+        return {"kind": "system", "text": event.content}
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # PlaytestSession                                                               #
 # --------------------------------------------------------------------------- #
 
@@ -203,19 +323,46 @@ class PlaytestSession:
             channel=proposal.channel,
             target=proposal.target,
         )
-        return self._drain_new_events()
+        return [r for e in self._collect_new_events() if (r := render_event(e))]
 
-    def _drain_new_events(self) -> list[str]:
-        """Return rendered lines for events not yet seen by this session."""
+    def step_both(self, player_input: str) -> tuple[list[str], list[dict]]:
+        """Run the beat and return ``(text_lines, gui_events)`` in one call.
+
+        ``text_lines`` matches what ``step()`` would return. ``gui_events`` is a
+        list of typed dicts ready for the browser GUI's ``applyEvent()`` handler.
+        Dice/resolution pairs are folded into a single dice event.
+        """
+        proposal = self.parse_proposal(player_input)
+        self._runner.run(
+            actor=self._player_id,
+            action=proposal.intent,
+            channel=proposal.channel,
+            target=proposal.target,
+        )
+        new_events = self._collect_new_events()
+        lines = [r for e in new_events if (r := render_event(e))]
+        raw_json = [d for e in new_events if (d := render_event_json(e)) is not None]
+        return lines, _combine_dice_events(raw_json)
+
+    def history_json(self) -> list[dict]:
+        """Full entitled event stream as typed GUI dicts (for session resume)."""
         store = self._assembler.belief_store(self._player_id)
-        lines: list[str] = []
+        raw = [d for e in store.events if (d := render_event_json(e)) is not None]
+        return _combine_dice_events(raw)
+
+    def _collect_new_events(self) -> list[ProjectedEvent]:
+        """Return entitled events not yet seen and mark them as rendered."""
+        store = self._assembler.belief_store(self._player_id)
+        new_events: list[ProjectedEvent] = []
         for event in store.events:
             if event.id not in self._rendered_ids:
                 self._rendered_ids.add(event.id)
-                rendered = render_event(event)
-                if rendered:
-                    lines.append(rendered)
-        return lines
+                new_events.append(event)
+        return new_events
+
+    def _drain_new_events(self) -> list[str]:
+        """Return rendered lines for events not yet seen by this session."""
+        return [r for e in self._collect_new_events() if (r := render_event(e))]
 
     def player_view(self) -> list[str]:
         """All rendered lines from the player's current entitled belief store."""

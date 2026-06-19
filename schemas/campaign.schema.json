@@ -141,6 +141,84 @@
           "front_owner":    { "type": "string" }
         }
       }
+    },
+
+    "player_intro": {
+      "type": "string",
+      "description": "Player-facing premise/backstory revealed at session open. Shared with the player character; never contains GM secrets."
+    },
+
+    "gm_context": {
+      "type": "string",
+      "description": "GM-private context: hidden truths, villain motivations, secrets the player must not know. Never sent to player or ally agents."
+    },
+
+    "starting_scene": {
+      "type": "string",
+      "description": "Opening scene narration delivered by the GM at session start, before the first player action."
+    },
+
+    "starting_location": {
+      "type": "string",
+      "description": "Entity ID or name of the starting zone/location."
+    },
+
+    "initial_visible_truths": {
+      "type": "array",
+      "description": "Plain-English fact statements committed as player-visible truths at session open.",
+      "items": { "type": "string" }
+    },
+
+    "initial_hidden_truths": {
+      "type": "array",
+      "description": "Plain-English fact statements committed as GM-private truths at session open. Never surfaced in player context.",
+      "items": { "type": "string" }
+    },
+
+    "npcs": {
+      "type": "array",
+      "description": "Core NPCs introduced or referenced in this campaign.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id":          { "type": "string" },
+          "name":        { "type": "string" },
+          "description": { "type": "string" },
+          "faction_id":  { "type": "string", "description": "Optional: must match an id in factions." },
+          "disposition": { "type": "string", "enum": ["friendly", "neutral", "hostile", "unknown"], "default": "neutral" }
+        }
+      }
+    },
+
+    "tone_boundaries": {
+      "type": "object",
+      "description": "Safety and content constraints for this campaign.",
+      "additionalProperties": false,
+      "properties": {
+        "content_rating":    { "type": "string", "description": "e.g. 'PG-13', 'R', 'mature'." },
+        "forbidden_themes":  { "type": "array", "items": { "type": "string" }, "description": "Topics the GM must never introduce." },
+        "advisory_themes":   { "type": "array", "items": { "type": "string" }, "description": "Topics present but handled with care." }
+      }
+    },
+
+    "lore_entries": {
+      "type": "array",
+      "description": "Lorebook entries injected into agent context when triggered by keyword matching.",
+      "items": {
+        "type": "object",
+        "required": ["entry_id", "title", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "entry_id":       { "type": "string" },
+          "title":          { "type": "string" },
+          "content":        { "type": "string" },
+          "keywords":       { "type": "array", "items": { "type": "string" } },
+          "audience_class": { "type": "string", "default": "all", "description": "'all', 'gm_only', or 'player_{id}'." },
+          "priority":       { "type": "integer", "default": 0 }
+        }
+      }
     }
   }
 }

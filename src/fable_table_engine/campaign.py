@@ -56,6 +56,15 @@ class CampaignPackage:
     alternative_fixtures: dict[str, list[FixtureBinding]] = field(default_factory=dict)
     world_clocks: list[dict[str, Any]] = field(default_factory=list)
     lore_entries: list[dict[str, Any]] = field(default_factory=list)
+    # D-040: required for compiler-generated campaigns; optional for hand-authored ones.
+    player_intro: str = ""
+    gm_context: str = ""
+    starting_scene: str = ""
+    starting_location: str = ""
+    initial_visible_truths: list[str] = field(default_factory=list)
+    initial_hidden_truths: list[str] = field(default_factory=list)
+    npcs: list[dict[str, Any]] = field(default_factory=list)
+    tone_boundaries: dict[str, Any] = field(default_factory=dict)
 
     def lore_deck(self, gm_entity: str = "gm"):
         """Build a LoreDeck from this package's lore_entries (lazy import)."""
@@ -292,6 +301,41 @@ def load_campaign_dict(data: dict[str, Any]) -> CampaignPackage:
             )
         lore_entries.append(dict(le_data))
 
+    # ---- D-040 fields ---------------------------------------------------------- #
+    player_intro = str(data.get("player_intro", "") or "")
+    gm_context = str(data.get("gm_context", "") or "")
+    starting_scene = str(data.get("starting_scene", "") or "")
+    starting_location = str(data.get("starting_location", "") or "")
+
+    initial_visible_truths: list[str] = []
+    for i, t in enumerate(data.get("initial_visible_truths", [])):
+        if not isinstance(t, str):
+            raise ValueError(f"initial_visible_truths[{i}] must be a string")
+        initial_visible_truths.append(t)
+
+    initial_hidden_truths: list[str] = []
+    for i, t in enumerate(data.get("initial_hidden_truths", [])):
+        if not isinstance(t, str):
+            raise ValueError(f"initial_hidden_truths[{i}] must be a string")
+        initial_hidden_truths.append(t)
+
+    npcs: list[dict[str, Any]] = []
+    npc_ids: set[str] = set()
+    for i, npc_data in enumerate(data.get("npcs", [])):
+        if not isinstance(npc_data, dict):
+            raise ValueError(f"npcs[{i}] must be an object")
+        npc_id = _req_str(npc_data, "id", f"npcs[{i}]")
+        if npc_id in npc_ids:
+            raise ValueError(f"Duplicate npc id {npc_id!r}")
+        npc_ids.add(npc_id)
+        _req_str(npc_data, "name", f"npcs[{i}]")
+        npcs.append(dict(npc_data))
+
+    tone_boundaries_raw = data.get("tone_boundaries", {})
+    if not isinstance(tone_boundaries_raw, dict):
+        raise ValueError("tone_boundaries must be an object")
+    tone_boundaries: dict[str, Any] = dict(tone_boundaries_raw)
+
     return CampaignPackage(
         title=title,
         version=version,
@@ -304,6 +348,14 @@ def load_campaign_dict(data: dict[str, Any]) -> CampaignPackage:
         alternative_fixtures=alternative_fixtures,
         world_clocks=world_clocks,
         lore_entries=lore_entries,
+        player_intro=player_intro,
+        gm_context=gm_context,
+        starting_scene=starting_scene,
+        starting_location=starting_location,
+        initial_visible_truths=initial_visible_truths,
+        initial_hidden_truths=initial_hidden_truths,
+        npcs=npcs,
+        tone_boundaries=tone_boundaries,
     )
 
 

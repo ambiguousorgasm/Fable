@@ -69,8 +69,8 @@ class TestSettingsRegistry:
         assert SettingsRegistry.ESSENTIAL_KEYS == frozenset(SettingsRegistry.DEFAULTS.keys())
 
     def test_has_model_and_budget_settings(self):
-        # 6 model slots + 12 per-role budget entries + 1 lorebook window
-        assert len(SettingsRegistry.DEFAULTS) == 19
+        # 7 model slots + 12 per-role budget entries + 1 lorebook window
+        assert len(SettingsRegistry.DEFAULTS) == 20
 
 
 # --------------------------------------------------------------------------- #
