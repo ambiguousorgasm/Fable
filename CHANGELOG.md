@@ -4,6 +4,16 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Public release hygiene: setup script, README rewrite, personal-path audit
+
+**`scripts/setup.sh`** — new bootstrap script. Checks Python 3.11+, creates `.venv` if missing, runs `pip install -e ".[dev]"`, copies `.env.example` to `.env`, prints next-step instructions. Executable; no external dependencies.
+
+**`README.md`** — rewritten for public consumption. Removed stale "Current build posture" list (described Phase 1 priorities; we are at Phase 22 complete). Removed "Claude Code usage" section (internal-only). Added: quick setup via script + manual fallback, current status note, secrets policy, key source directory map, development reference section listing internal docs.
+
+**`CHANGELOG.md`** — removed one personal filesystem path (`/home/audrey`) that was leaked into a prior changelog entry; replaced with "a parent directory".
+
+---
+
 ## 2026-06-19 — Roadmap restructure: Phase 22 final, post-core tracks, extraction track
 
 **Doc-only pass.** No code changes; 1401 tests unchanged.
@@ -1012,7 +1022,7 @@ Design-review follow-up: registered three things CORE/COMPONENTS already *assume
 
 ## 2026-06-17 — Repository and environment bootstrap
 
-- Initialized a dedicated git repository at the project root (`git init -b main`). *Why:* the scaffold was previously untracked inside the `/home/audrey` repo, which made the project `.gitignore` inert, the CHANGELOG/commit-based change protocol moot, and any branch/PR workflow impossible. The project is now its own versioned repo.
+- Initialized a dedicated git repository at the project root (`git init -b main`). *Why:* the scaffold was previously untracked inside a parent directory repo, which made the project `.gitignore` inert, the CHANGELOG/commit-based change protocol moot, and any branch/PR workflow impossible. The project is now its own versioned repo.
 - Created the local `./.venv` (Python 3.13) and installed the package editable with dev extras (`pip install -e ".[dev]"`); confirmed `pytest` runs (6 phase-1 contracts skipped as designed).
 - Documented the setup step in `README.md` (new **Setup** section) and as step 0 of the IMPLEMENTATION_PLAN "first coding pass". *Why:* `CLAUDE.md` mandates `./.venv/bin/python` but no doc told a fresh checkout to create the venv.
 - Design unchanged; this is a build/setup-only pass (no component or architecture changes).

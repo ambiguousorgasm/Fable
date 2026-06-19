@@ -1,45 +1,65 @@
 # FABLE Table Engine
 
-This repository contains the design and implementation scaffold for the **FABLE Table Engine**: an AI-facilitated tabletop RPG table for one human player, with an AI Game Master, AI teammates, deterministic rules/state, differential information, and per-character channels.
+An AI-facilitated tabletop RPG engine for one human player. Runs a complete session with an AI Game Master, AI teammates, deterministic rules and world state, differential information, and per-character channels — entirely through Python and an Anthropic API key.
 
-## Start here
+**Code owns truth; models own voice.** Dice, rules, world state, and the event log are deterministic Python. Language models produce narration, proposals, and judgment under ambiguity — but they never decide outcomes and never see information they are not entitled to.
 
-- `00_README.md` — project map, precedence rules, and change protocol.
-- `FABLE_Table_Engine_Blueprint.md` — CORE architecture and design authority.
-- `CLAUDE.md` — Claude Code operating instructions.
-- `STATUS.md` — current design-vs-build state.
-- `IMPLEMENTATION_PLAN.md` — current milestone and concrete next steps.
-- `COMPONENTS.md` — component registry and dependency impact map.
-- `DECISIONS.md` — open/resolved design decisions and MVP defaults.
-- `CHANGELOG.md` — append-only history of meaningful changes.
-
-## Setup
-
-This project uses a local virtual environment at `./.venv` (mandated by `CLAUDE.md`; do not use global Python for project commands).
+## Quick setup
 
 ```sh
-python3 -m venv .venv            # requires Python >= 3.11
-./.venv/bin/pip install -e ".[dev]"
-./.venv/bin/python -m pytest -q  # phase-1 contracts are skipped until implemented
+git clone <repo-url> fable-table-engine
+cd fable-table-engine
+bash scripts/setup.sh
 ```
 
-## Current build posture
+The setup script checks Python 3.11+, creates `.venv`, installs `pip install -e ".[dev]"`, and copies `.env.example` to `.env`. Then add your Anthropic API key to `.env`.
 
-The design is intentionally architecture-first. The implementation should begin with the deterministic substrate before any agent/UI polish:
+### Manual setup
 
-1. Event log
-2. World-state skeleton
-3. Dice service
-4. Minimal rules-engine interface
-5. Audience/visibility filtering
-6. Commit/canon boundary
+```sh
+python3 -m venv .venv           # requires Python >= 3.11
+./.venv/bin/pip install -e ".[dev]"
+cp .env.example .env            # add ANTHROPIC_API_KEY
+```
 
-Do **not** build agent cleverness, TTS, plot management, or UI polish before the deterministic core and access model are testable.
+## Run the tests
 
-## Claude Code usage
+```sh
+./.venv/bin/python -m pytest -q
+```
 
-Open this directory in Claude Code and begin by asking it to read `CLAUDE.md`, `00_README.md`, `STATUS.md`, and the CORE blueprint. The project-level Claude Code settings live in `.claude/settings.json`.
+All tests mock model calls — no API key required to run the suite.
 
-## MCP
+## Current status
 
-No live MCP servers are configured by default. Add project-scoped MCP servers only when you know the real tools you want to use. See `docs/MCP_SETUP.md`.
+Phase 22 (core release hardening) is complete. The deterministic substrate, event log, access model, perception model, context assembly, GM split, character agents, orchestrator, auditor, plot manager, and persistence layer are all built and tested. See `STATUS.md` for the full build-vs-design state.
+
+## Secrets policy
+
+- `.env` and `.env.*` are git-ignored and must never be committed.
+- `secrets/`, credential files, API keys, and private tokens must never be committed.
+- Campaign uploads, generated transcripts, and runtime databases are data files — keep them out of version control.
+
+## Key source directories
+
+```
+src/fable_table_engine/     Core engine (Python package)
+tests/                      Full test suite
+schemas/                    JSON schemas for events, world state, campaigns
+static/                     Reference materials (rules PDF)
+scripts/                    Dev tooling (setup, public tree builder)
+public/                     Public-facing README and docs
+```
+
+## Development reference
+
+Internal docs for contributors:
+
+- `00_README.md` — project map, precedence rules, and change protocol
+- `FABLE_Table_Engine_Blueprint.md` — CORE architecture and design authority
+- `CLAUDE.md` — Claude Code operating instructions
+- `STATUS.md` — current design-vs-build state
+- `IMPLEMENTATION_PLAN.md` — roadmap and next steps
+- `COMPONENTS.md` — component registry and dependency impact map
+- `DECISIONS.md` — open/resolved design decisions and MVP defaults
+- `CHANGELOG.md` — append-only history of meaningful changes
