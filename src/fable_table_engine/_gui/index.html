@@ -3190,7 +3190,7 @@ function HomeScreen({ sessions, campaigns, loading, error, onResume, onNew, them
           <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
             <button className="home-new-btn" onClick={onGenerateSubmit} disabled={generateBusy || !(generatePrompt || "").trim()}
               style={{ opacity: generateBusy || !(generatePrompt || "").trim() ? 0.55 : 1 }}>
-              {generateBusy ? "Generating…" : "Generate"}
+              {generateBusy ? "Generating… (30–90s)" : "Generate"}
             </button>
             {!generateBusy && (
               <button className="home-new-btn" onClick={onCancelGenerate} style={{ opacity: 0.6 }}>Cancel</button>

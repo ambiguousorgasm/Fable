@@ -25,7 +25,7 @@ class SettingsRegistry:
         "auditor_model": "claude-haiku-4-5-20251001",
         "social_interpreter_model": "claude-sonnet-4-6",
         "character_agent_default_model": "claude-opus-4-8",
-        "campaign_compiler_model": "claude-opus-4-8",
+        "campaign_compiler_model": "claude-sonnet-4-6",
         # Lorebook injection window (D-043)
         "lorebook_injection_window": "5",
         # Per-role context budget policies (D-042)

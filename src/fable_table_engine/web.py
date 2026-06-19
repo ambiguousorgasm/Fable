@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import sys
+import traceback
 import webbrowser
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -323,7 +324,7 @@ def create_handler(state: WebAppState):
                 self._send_error(exc)
 
         def log_message(self, format: str, *args: Any) -> None:
-            return
+            print(f"[fable-web] {self.address_string()} {format % args}", file=sys.stderr)
 
         def _read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or 0)
@@ -366,6 +367,8 @@ def create_handler(state: WebAppState):
             status = HTTPStatus.BAD_REQUEST
             if isinstance(exc, KeyError):
                 status = HTTPStatus.NOT_FOUND
+            print(f"[fable-web] ERROR {self.path}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             self._send_json({"error": str(exc)}, status=status)
 
     return FableHandler
