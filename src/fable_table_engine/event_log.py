@@ -19,7 +19,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from .events import (
+    CORRECTION_TYPES,
     MECHANICAL_TYPES,
+    ROLL_VISIBILITY_LEVELS,
     Commitment,
     DeterminismBoundaryError,
     Event,
@@ -61,6 +63,8 @@ class EventLog:
         visibility: Visibility = "content",
         commitments: tuple[Commitment, ...] | list[Commitment] = (),
         derived_from: tuple[str, ...] | list[str] = (),
+        roll_visibility: str | None = None,
+        authorized_by: tuple[str, ...] | list[str] = (),
         _capability: object | None = None,
     ) -> Event:
         """Append a new event and return it.
@@ -87,6 +91,8 @@ class EventLog:
             content=content,
             commitments=tuple(commitments),
             derived_from=tuple(derived_from),
+            roll_visibility=roll_visibility,
+            authorized_by=tuple(authorized_by),
         )
         self._events.append(event)
         self._by_id[event.id] = event
@@ -131,6 +137,14 @@ class EventLog:
         occurred — and how many — from the gaps; the contiguous index preserves
         ordering while leaking nothing about hidden activity (D-013).
         """
+        # Build superseded map: event_id → corrector_event_id (D-031).
+        # A correction or retcon event's derived_from entries are superseded by it.
+        superseded: dict[str, str] = {}
+        for ev in self._events:
+            if ev.type in CORRECTION_TYPES:
+                for ref_id in ev.derived_from:
+                    superseded[ref_id] = ev.id
+
         projected: list[ProjectedEvent] = []
         for event in self._events:
             level = event.visibility_for(entity)
@@ -148,6 +162,8 @@ class EventLog:
                     visibility=level,
                     content=event.content if is_content else None,
                     commitments=event.commitments if is_content else (),
+                    roll_visibility=event.roll_visibility,
+                    superseded_by=superseded.get(event.id),
                 )
             )
         return tuple(projected)

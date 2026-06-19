@@ -6,8 +6,8 @@ boundary, perception model). Read CLAUDE.md and the CORE blueprint
 """
 
 from .auditor import AuditFlag, AuditResult, AuditTier, Auditor
-from .beat import BeatResult, BeatRunner, DeliveryScope
-from .console import PlaytestSession, parse_proposal, render_event
+from .beat import ActionLifecycleState, BeatResult, BeatRunner, DeliveryScope
+from .console import PlaytestSession, epistemic_label, parse_proposal, render_event
 from .plot_graph import (
     Faction,
     FixtureBinding,
@@ -59,7 +59,23 @@ from .effects import (
     effect_from_dict,
 )
 from .gm import AdjudicatorGM, NarratorGM, ResolutionPlan, StakesDecision, WorldSimulator
-from .provider import CallRecord, ModelCallError, ModelGateway, TelemetrySink
+from .budgeter import (
+    BudgetCheckResult,
+    ContextBudgetPolicy,
+    ContextBudgeter,
+    TokenEstimator,
+)
+from .lorebook import LoreAssembler, LoreDeck, LoreEntry
+from .provider import (
+    AnthropicAdapter,
+    CallRecord,
+    CostCeilingStatus,
+    ModelCallError,
+    ModelGateway,
+    ProviderAdapter,
+    TelemetrySink,
+    ToolOutputError,
+)
 from .social import (
     COMPEL_AUTHOR,
     CompelResolution,
@@ -71,8 +87,11 @@ from .dice import DiceResult, DiceService
 from .event_log import EventLog
 from .events import (
     CHANNELS,
+    CORRECTION_TYPES,
     EPISTEMIC_TYPES,
     MECHANICAL_TYPES,
+    ROLL_VISIBILITY_LEVELS,
+    TRANSFER_TYPES,
     VISIBILITY_LEVELS,
     Commitment,
     DeterminismBoundaryError,
@@ -97,6 +116,10 @@ from .disposition import (
     DispositionGraph,
 )
 from .persistence import (
+    ENGINE_SCHEMA_VERSION,
+    SchemaVersionError,
+    SessionManifest,
+    SessionManager,
     SQLiteDispositionGraph,
     SQLiteEventLog,
     SQLitePlotGraph,
@@ -106,12 +129,15 @@ from .persistence import (
     attach_disposition,
     open_session,
 )
+from .interface import HomeScreen, PlayInterface, build_play_interface
 from .rules import Band, CheckResult, RulesEngine, band_for_margin
-from .world_state import Entity, WorldState
+from .settings import SettingsManager, SettingsRegistry, load_settings, reset_setting
+from .world_state import ELAPSED_CATEGORIES, Entity, WorldState
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "ActionLifecycleState",
     "ActionQueue",
     "AdvanceClock",
     "AdjudicatorGM",
@@ -132,7 +158,9 @@ __all__ = [
     "CharacterAgent",
     "CharacterSheet",
     "CHANNELS",
+    "CORRECTION_TYPES",
     "EPISTEMIC_TYPES",
+    "TRANSFER_TYPES",
     "CanonConflictError",
     "ChangeAccess",
     "ChangeResource",
@@ -192,10 +220,18 @@ __all__ = [
     "PlotManager",
     "Proposal",
     "MECHANICAL_TYPES",
+    "ROLL_VISIBILITY_LEVELS",
     "OVERRIDE_TYPE",
     "PERCEPTION_AUTHOR",
     "ProjectedEvent",
+    "HomeScreen",
+    "PlayInterface",
+    "build_play_interface",
     "RulesEngine",
+    "SettingsManager",
+    "SettingsRegistry",
+    "load_settings",
+    "reset_setting",
     "CampaignPackage",
     "SQLiteEventLog",
     "SQLitePlotGraph",
@@ -211,9 +247,22 @@ __all__ = [
     "StakesDecision",
     "Stimulus",
     "VISIBILITY_LEVELS",
+    "ELAPSED_CATEGORIES",
     "WorldState",
+    "AnthropicAdapter",
+    "BudgetCheckResult",
     "CallRecord",
+    "ContextBudgetPolicy",
+    "ContextBudgeter",
+    "CostCeilingStatus",
+    "LoreAssembler",
+    "LoreDeck",
+    "LoreEntry",
+    "ProviderAdapter",
     "TelemetrySink",
+    "TokenEstimator",
+    "ToolOutputError",
+    "epistemic_label",
     "parse_proposal",
     "render_event",
     "band_for_margin",
@@ -230,5 +279,9 @@ __all__ = [
     "perceptible_entities",
     "TurnGrant",
     "TurnMode",
+    "ENGINE_SCHEMA_VERSION",
+    "SchemaVersionError",
+    "SessionManifest",
+    "SessionManager",
     "__version__",
 ]

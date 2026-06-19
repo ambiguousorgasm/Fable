@@ -48,6 +48,15 @@ class Proposal:
       "public"  — the whole table.
       "whisper" — actor + target + GM only (requires `target`).
       "ooc"     — out-of-character meta; never enters the fiction.
+
+    Phase 21 Edge mechanic (v6 §13):
+      `edge_spend` declares which Edge maneuver to attempt this beat.
+      Values:
+        "lean_before" — before roll: spend 1 Edge, reduce Exposure by 1.
+        "lean_after"  — after roll: spend 1 Edge + justification, step band up 1.
+        "push"        — after roll: spend 1 Edge + 2 Stress, step band up 1.
+        "shield"      — when shielded ally takes Harm: spend 1 Edge, redirect to self.
+      At most one band step-up per roll (lean_after and push are mutually exclusive).
     """
 
     agent: str
@@ -56,6 +65,9 @@ class Proposal:
     channel: str = "public"
     target: str | None = None
     reasoning: str = ""
+    edge_spend: str | None = None
+    edge_justification: str = ""
+    edge_shield_target: str | None = None
 
     def __post_init__(self) -> None:
         if not self.intent:
@@ -229,19 +241,25 @@ class CharacterAgent:
     def sheet(self) -> CharacterSheet:
         return self._sheet
 
-    def propose(self, assembler: ContextAssembler) -> Proposal:
+    def propose(self, assembler: ContextAssembler, budgeter=None) -> Proposal:
         """Produce a proposal from this agent's private perspective.
 
-        Reads its own filtered belief store via `assembler`. The hidden agenda
+        Reads its own filtered belief store via ``assembler``. The hidden agenda
         is present only in the system prompt — it is never placed in the user
         message that the model logs or shares.
+
+        ``budgeter`` (optional ContextBudgeter) controls the event window;
+        falls back to the assembler's own budgeter, then to limit=12.
         """
         store = assembler.belief_store(self._persona.entity_id)
+
+        _budgeter = budgeter or assembler.budgeter
+        event_limit = _budgeter.event_window("character_agent") if _budgeter else 12
 
         system = _build_system_prompt(self._persona, self._sheet)
         user = _build_user_message(
             self._persona,
-            events_summary=_events_summary(store),
+            events_summary=_events_summary(store, limit=event_limit),
             scene_summary=_scene_summary(store),
         )
 

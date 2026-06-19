@@ -17,12 +17,42 @@ from typing import Any, Mapping, Union
 # audience but does not solely determine it.
 CHANNELS = frozenset({"public", "whisper", "ooc", "dice", "system"})
 
-# Epistemic types for commitments (D-024). Only "fact" enters the canon ledger;
-# "claim" and "observation" live in audience-scoped event history and POV
-# projections. "expired" is a tombstone that removes a prior fact from
-# committed_facts (Phase 12 typed effect executor). "Belief" and "theory" are
-# derived annotations (deferred).
-EPISTEMIC_TYPES = frozenset({"fact", "claim", "observation", "expired"})
+# Epistemic types for commitments (D-024, D-032). Only "fact" enters the canon
+# ledger; "claim" and "observation" live in audience-scoped event history and
+# POV projections. "expired" is a tombstone that removes a prior fact from
+# committed_facts (Phase 12). "theory" is a character inference or explicit
+# suspicion (D-032, Phase 21) — not promoted to "fact" without engine evidence.
+EPISTEMIC_TYPES = frozenset({"fact", "claim", "observation", "expired", "theory"})
+
+# Roll visibility levels (D-029). Controls who sees a dice_roll event's
+# mechanical detail. Enforced via the event audience; this tag is stored so
+# render_event() and narrator context can make the same decision without
+# re-deriving it from audience membership.
+#   table       — all present see full roll detail (default for player rolls)
+#   roller_only — only the acting character + GM; others see no mechanical data
+#   gm_only     — cold GM only; warm GM and all players see nothing (default
+#                 for GM passive / secret checks)
+#   revealed    — was gm_only; GM has explicitly surfaced it via a structural
+#                 event; client now shows details
+ROLL_VISIBILITY_LEVELS = frozenset({"table", "roller_only", "gm_only", "revealed"})
+
+# Correction and retcon event types (D-031). Both are append-only additions;
+# nothing is deleted. `correction` fixes a mechanical/typo error after commit;
+# `retcon` is an agreed narrative revision requiring human player authorization.
+# Events referenced in derived_from of either type are marked superseded_by in
+# ProjectedEvent so render_event() can emit the appropriate marker.
+CORRECTION_TYPES = frozenset({"correction", "retcon"})
+
+# Knowledge-transfer event types (D-028). Each produces a logged event; all
+# commitments on these events must use epistemic_type="claim" (never "fact").
+# From the receiver's perspective, transferred knowledge is always a claim from
+# the sharing entity, not an engine-confirmed fact. Independent engine evidence
+# is required to promote a claim to "fact".
+#   share_briefing — explicit deliberate knowledge transfer ("Mira tells the
+#                    group what she saw"); audience = the recipients.
+#   object_shown   — a physical object or document shown to specific parties;
+#                    audience = those present who are shown it.
+TRANSFER_TYPES = frozenset({"share_briefing", "object_shown"})
 
 # Visibility levels: whether an audience member receives the event's content
 # or only the metadata that it happened (CORE §3).
@@ -111,6 +141,8 @@ class Event:
     content: str
     commitments: tuple[Commitment, ...] = ()
     derived_from: tuple[str, ...] = ()
+    roll_visibility: str | None = None
+    authorized_by: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.sequence < 0:
@@ -125,6 +157,20 @@ class Event:
             raise ValueError("audience must not contain duplicates")
         if len(set(self.derived_from)) != len(self.derived_from):
             raise ValueError("derived_from must not contain duplicates")
+        if self.roll_visibility is not None and self.roll_visibility not in ROLL_VISIBILITY_LEVELS:
+            raise ValueError(
+                f"roll_visibility must be one of {sorted(ROLL_VISIBILITY_LEVELS)} or None"
+            )
+        if self.type == "retcon" and not self.authorized_by:
+            raise ValueError("retcon events require non-empty authorized_by (D-031)")
+        if self.type in TRANSFER_TYPES:
+            bad = [c for c in self.commitments if c.epistemic_type == "fact"]
+            if bad:
+                raise ValueError(
+                    f"{self.type!r} events may not carry 'fact' commitments (D-028): "
+                    f"transferred knowledge enters receivers' belief stores as claims. "
+                    f"Use epistemic_type='claim' instead."
+                )
         self._validate_visibility()
 
     def _validate_visibility(self) -> None:
@@ -170,6 +216,8 @@ class Event:
             "content": self.content,
             "commitments": [c.to_dict() for c in self.commitments],
             "derived_from": list(self.derived_from),
+            "roll_visibility": self.roll_visibility,
+            "authorized_by": list(self.authorized_by),
         }
 
 
@@ -195,3 +243,5 @@ class ProjectedEvent:
     visibility: str
     content: str | None
     commitments: tuple[Commitment, ...] = field(default=())
+    roll_visibility: str | None = None
+    superseded_by: str | None = None

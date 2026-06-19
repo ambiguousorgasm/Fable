@@ -30,10 +30,13 @@ loop (phase 7), not here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from .events import ProjectedEvent
 from .perception import Scene, perceptible_entities
+
+if TYPE_CHECKING:
+    from .lorebook import LoreAssembler, LoreEntry
 
 
 @dataclass(frozen=True)
@@ -44,10 +47,12 @@ class Belief:
     was entitled to see. `source_event_id` is the projected event's id (stable
     cross-POV identity), not a position.
 
-    `epistemic_type` mirrors the originating Commitment (D-024):
+    `epistemic_type` mirrors the originating Commitment (D-024, D-032):
       "fact"        — objective committed state; enters BeliefStore.beliefs
       "claim"       — asserted by a speaker; enters BeliefStore.claims
       "observation" — perceived by this POV; enters BeliefStore.observations
+      "theory"      — character inference or explicit suspicion; enters
+                      BeliefStore.theories (D-032, Phase 21)
 
     Provenance fields carry who asserted or observed this. Both default to None
     so existing sites that don't supply them are unaffected.
@@ -74,12 +79,13 @@ class BeliefStore:
     (latest per (subject, predicate) — objective committed state this POV saw);
     `claims` are all heard claims in POV order (may repeat subject/predicate keys
     — multiple speakers may have claimed different things); `observations` are all
-    observations this POV made in POV order. `perceptible` is who the POV can
+    observations this POV made in POV order; `theories` are character inferences or
+    explicit suspicions in POV order (D-032). `perceptible` is who the POV can
     currently sense (empty when no Scene was supplied).
 
-    Invariant (D-024, Phase 11): `believes()` and `value_of()` operate only on
-    the facts dict. Claims never silently enter the facts dict, and observations
-    remain POV-private to the audience they were scoped to.
+    Invariant (D-024, Phase 11, D-032): `believes()` and `value_of()` operate only
+    on the facts dict. Claims and theories never silently enter the facts dict, and
+    observations remain POV-private to the audience they were scoped to.
 
     Frozen: a belief store is a derived snapshot, never authoritative.
     """
@@ -90,6 +96,7 @@ class BeliefStore:
     perceptible: frozenset[str]
     claims: tuple[Belief, ...] = ()             # heard claims, in POV order
     observations: tuple[Belief, ...] = ()       # POV observations, in POV order
+    theories: tuple[Belief, ...] = ()           # character inferences/suspicions, in POV order (D-032)
 
     def believes(self, subject: str, predicate: str) -> bool:
         """True only when the POV holds an objective *fact* about (subject, predicate)."""
@@ -117,26 +124,62 @@ class ContextAssembler:
     Owns no authoritative state — it reads the log and the scene. Pass a `Scene`
     to populate the ambient perceptual situation; omit it for a pure
     log-projection belief store.
+
+    ``budgeter`` (Phase 22 D-042) is stored as a collaborator for prompt-assembly
+    callers (BeatRunner, CharacterAgent) that need per-role event windows. The
+    assembler itself never filters events for budget — belief stores must remain
+    complete so canon and differential-knowledge projections are accurate.
     """
 
-    def __init__(self, log, scene: Scene | None = None) -> None:
+    def __init__(
+        self,
+        log,
+        scene: Scene | None = None,
+        budgeter=None,
+        lore_assembler: LoreAssembler | None = None,
+    ) -> None:
         self._log = log
         self._scene = scene
+        self._budgeter = budgeter
+        self._lore_assembler = lore_assembler
+
+    @property
+    def budgeter(self):
+        """The ContextBudgeter collaborator, or None if not configured."""
+        return self._budgeter
+
+    @property
+    def lore_assembler(self) -> LoreAssembler | None:
+        """The LoreAssembler collaborator, or None if lorebook is disabled."""
+        return self._lore_assembler
+
+    def lore_for(self, store: BeliefStore, pov: str) -> list[LoreEntry]:
+        """Return matched lorebook entries for this POV.
+
+        Returns an empty list when no LoreAssembler is configured (opt-in).
+        Audience class gate fires inside LoreAssembler.matching() — this method
+        never bypasses it.
+        """
+        if self._lore_assembler is None:
+            return []
+        return self._lore_assembler.matching(store, pov)
 
     def _fold_epistemic(
         self,
         events: tuple[ProjectedEvent, ...],
-    ) -> tuple[dict[tuple[str, str], Belief], list[Belief], list[Belief]]:
-        """Split projected events into (facts_dict, claims_list, observations_list).
+    ) -> tuple[dict[tuple[str, str], Belief], list[Belief], list[Belief], list[Belief]]:
+        """Split projected events into (facts_dict, claims_list, observations_list, theories_list).
 
         facts: latest objective commitment per (subject, predicate), in POV order.
         claims: all heard claims in POV order (repeats allowed; multiple speakers
                 may claim different values for the same key).
         observations: all POV observations in POV order.
+        theories: all character inferences/suspicions in POV order (D-032).
         """
         facts: dict[tuple[str, str], Belief] = {}
         claims: list[Belief] = []
         obs_list: list[Belief] = []
+        theories: list[Belief] = []
         for pe in events:
             for c in pe.commitments:
                 belief = Belief(
@@ -154,7 +197,9 @@ class ContextAssembler:
                     claims.append(belief)
                 elif c.epistemic_type == "observation":
                     obs_list.append(belief)
-        return facts, claims, obs_list
+                elif c.epistemic_type == "theory":
+                    theories.append(belief)
+        return facts, claims, obs_list, theories
 
     def beliefs_from(self, events: tuple[ProjectedEvent, ...]) -> dict[tuple[str, str], Belief]:
         """Fold a POV's projected events into believed *facts* only.
@@ -165,12 +210,12 @@ class ContextAssembler:
         metadata level), so this naturally includes only what the POV truly saw.
         Latest fact per (subject, predicate) wins, in the POV's order.
         """
-        facts, _, _ = self._fold_epistemic(events)
+        facts, _, _, _ = self._fold_epistemic(events)
         return facts
 
     def belief_store(self, pov: str) -> BeliefStore:
         events = self._log.project_for(pov)
-        facts, claims, obs_list = self._fold_epistemic(events)
+        facts, claims, obs_list, theories = self._fold_epistemic(events)
         perceptible = (
             frozenset(perceptible_entities(self._scene, pov))
             if self._scene is not None
@@ -183,4 +228,5 @@ class ContextAssembler:
             perceptible=perceptible,
             claims=tuple(claims),
             observations=tuple(obs_list),
+            theories=tuple(theories),
         )

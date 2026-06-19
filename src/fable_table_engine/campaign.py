@@ -55,6 +55,12 @@ class CampaignPackage:
     hidden_nodes: list[FunctionNode] = field(default_factory=list)
     alternative_fixtures: dict[str, list[FixtureBinding]] = field(default_factory=dict)
     world_clocks: list[dict[str, Any]] = field(default_factory=list)
+    lore_entries: list[dict[str, Any]] = field(default_factory=list)
+
+    def lore_deck(self, gm_entity: str = "gm"):
+        """Build a LoreDeck from this package's lore_entries (lazy import)."""
+        from .lorebook import LoreDeck
+        return LoreDeck.from_dicts(self.lore_entries, gm_entity=gm_entity)
 
     def to_plot_graph(self) -> PlotGraph:
         """Construct a populated in-memory PlotGraph from this package."""
@@ -262,6 +268,30 @@ def load_campaign_dict(data: dict[str, Any]) -> CampaignPackage:
             faction_id=faction_id,
         ))
 
+    # ---- lore entries ------------------------------------------------------- #
+    lore_entries: list[dict[str, Any]] = []
+    entry_ids: set[str] = set()
+    for i, le_data in enumerate(data.get("lore_entries", [])):
+        if not isinstance(le_data, dict):
+            raise ValueError(f"lore_entries[{i}] must be an object")
+        le_id = _req_str(le_data, "entry_id", f"lore_entries[{i}]")
+        if le_id in entry_ids:
+            raise ValueError(f"Duplicate lore entry id {le_id!r}")
+        entry_ids.add(le_id)
+        _req_str(le_data, "title", f"lore_entries[{i}]")
+        _req_str(le_data, "content", f"lore_entries[{i}]")
+        audience_class = le_data.get("audience_class", "all")
+        valid_classes = {"all", "gm_only"}
+        if (
+            audience_class not in valid_classes
+            and not str(audience_class).startswith("player_")
+        ):
+            raise ValueError(
+                f"lore_entries[{i}].audience_class {audience_class!r} must be "
+                f"'all', 'gm_only', or 'player_{{id}}'"
+            )
+        lore_entries.append(dict(le_data))
+
     return CampaignPackage(
         title=title,
         version=version,
@@ -273,6 +303,7 @@ def load_campaign_dict(data: dict[str, Any]) -> CampaignPackage:
         hidden_nodes=hidden_nodes,
         alternative_fixtures=alternative_fixtures,
         world_clocks=world_clocks,
+        lore_entries=lore_entries,
     )
 
 

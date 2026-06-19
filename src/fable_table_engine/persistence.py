@@ -1,4 +1,4 @@
-"""SQLite-backed persistence for EventLog, WorldState, Scene, PlotGraph, and DispositionGraph (CORE §8; phases 1, 10, 17, 19).
+"""SQLite-backed persistence for EventLog, WorldState, Scene, PlotGraph, DispositionGraph, and session management (CORE §8; phases 1, 10, 17, 19, 21).
 
 All classes are drop-in subclasses of their in-memory counterparts — same
 interface, same guarantees, same capability enforcement. The in-memory originals
@@ -8,6 +8,14 @@ remain the default for tests; use `open_session` to opt into durability.
 connection so the event log, world state, and scene live in one file and share
 one transaction boundary. For campaign-aware sessions, follow with
 `attach_campaign(log, campaign)` to add the persistent plot graph.
+
+Phase 21 additions:
+  * ENGINE_SCHEMA_VERSION — bump this string when a DB migration is needed.
+  * SchemaVersionError — raised by open_session and SessionManager.resume on
+    mismatch (fail-closed; Phase 22 adds migration).
+  * SessionManifest — frozen metadata record for one saved session.
+  * SessionManager — creates, lists, and resumes sessions; enforces the schema
+    version guard on resume.
 
 Persistence scope:
   * EventLog  — every appended event survives restart.
@@ -27,9 +35,22 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ENGINE_SCHEMA_VERSION = "21.3"
+
+
+class SchemaVersionError(RuntimeError):
+    """Raised when a session DB's schema_version does not match ENGINE_SCHEMA_VERSION.
+
+    Fail-closed: callers must not proceed with the session. Phase 22 adds a
+    migration registry; Phase 21 only guards and rejects.
+    """
 
 from .event_log import EventLog
 from .events import Commitment, Event, Visibility
@@ -37,6 +58,17 @@ from .perception import Scene
 from .disposition import DispositionDelta, DispositionGraph
 from .plot_graph import Faction, FixtureBinding, Front, FunctionNode, Hook, PlotGraph
 from .world_state import Entity, WorldState
+
+
+# --------------------------------------------------------------------------- #
+# Schema version DDL                                                            #
+# --------------------------------------------------------------------------- #
+
+_CREATE_SCHEMA_VERSION = """
+CREATE TABLE IF NOT EXISTS schema_version (
+    version TEXT NOT NULL
+)
+"""
 
 
 # --------------------------------------------------------------------------- #
@@ -57,7 +89,7 @@ def _commitment_from_dict(d: dict[str, Any]) -> Commitment:
 
 
 def _event_from_row(row: tuple) -> Event:
-    seq, id_, ts, author, channel, aud_json, vis_json, type_, content, cmts_json, der_json = row
+    seq, id_, ts, author, channel, aud_json, vis_json, type_, content, cmts_json, der_json, roll_vis, auth_json = row
     return Event(
         sequence=seq,
         id=id_,
@@ -70,6 +102,8 @@ def _event_from_row(row: tuple) -> Event:
         content=content,
         commitments=tuple(_commitment_from_dict(c) for c in json.loads(cmts_json)),
         derived_from=tuple(json.loads(der_json)),
+        roll_visibility=roll_vis,
+        authorized_by=tuple(json.loads(auth_json)),
     )
 
 
@@ -79,25 +113,27 @@ def _event_from_row(row: tuple) -> Event:
 
 _CREATE_EVENTS = """
 CREATE TABLE IF NOT EXISTS events (
-    sequence     INTEGER PRIMARY KEY,
-    id           TEXT NOT NULL UNIQUE,
-    timestamp    TEXT NOT NULL,
-    author       TEXT NOT NULL,
-    channel      TEXT NOT NULL,
-    audience     TEXT NOT NULL,
-    visibility   TEXT NOT NULL,
-    type         TEXT NOT NULL,
-    content      TEXT NOT NULL,
-    commitments  TEXT NOT NULL,
-    derived_from TEXT NOT NULL
+    sequence         INTEGER PRIMARY KEY,
+    id               TEXT NOT NULL UNIQUE,
+    timestamp        TEXT NOT NULL,
+    author           TEXT NOT NULL,
+    channel          TEXT NOT NULL,
+    audience         TEXT NOT NULL,
+    visibility       TEXT NOT NULL,
+    type             TEXT NOT NULL,
+    content          TEXT NOT NULL,
+    commitments      TEXT NOT NULL,
+    derived_from     TEXT NOT NULL,
+    roll_visibility  TEXT,
+    authorized_by    TEXT NOT NULL DEFAULT '[]'
 )
 """
 
 _INSERT_EVENT = """
 INSERT INTO events
     (sequence, id, timestamp, author, channel, audience, visibility,
-     type, content, commitments, derived_from)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     type, content, commitments, derived_from, roll_visibility, authorized_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -137,7 +173,8 @@ class SQLiteEventLog(EventLog):
     def _load(self) -> None:
         rows = self._conn.execute(
             "SELECT sequence, id, timestamp, author, channel, audience, visibility, "
-            "type, content, commitments, derived_from FROM events ORDER BY sequence"
+            "type, content, commitments, derived_from, roll_visibility, authorized_by "
+            "FROM events ORDER BY sequence"
         ).fetchall()
         for row in rows:
             event = _event_from_row(row)
@@ -194,6 +231,8 @@ class SQLiteEventLog(EventLog):
         visibility: Visibility = "content",
         commitments=(),
         derived_from=(),
+        roll_visibility: str | None = None,
+        authorized_by=(),
         _capability=None,
     ) -> Event:
         # Capability check + in-memory append via parent; raises on boundary violation.
@@ -206,6 +245,8 @@ class SQLiteEventLog(EventLog):
             visibility=visibility,
             commitments=commitments,
             derived_from=derived_from,
+            roll_visibility=roll_visibility,
+            authorized_by=authorized_by,
             _capability=_capability,
         )
         vis = event.visibility if isinstance(event.visibility, str) else dict(event.visibility)
@@ -223,6 +264,8 @@ class SQLiteEventLog(EventLog):
                 event.content,
                 json.dumps([c.to_dict() for c in event.commitments]),
                 json.dumps(list(event.derived_from)),
+                event.roll_visibility,
+                json.dumps(list(event.authorized_by)),
             ),
         )
         if not self._tx_active[0]:
@@ -295,6 +338,16 @@ class SQLiteWorldState(WorldState):
             self.fronts = {}
             self.maintained_truths = {}
             self.entities = {}
+            # Time anchor resets to fresh defaults (D-030).
+            import uuid as _uuid
+            self.scene_id = str(_uuid.uuid4())
+            self.beat_index = 0
+            self.scene_phase = "quiet"
+            self.prose_time_label = None
+            self.elapsed_category = "beat"
+            # Persist defaults immediately so a subsequent open sees the same
+            # scene_id rather than generating a new UUID.
+            self._save()
             return
         s = json.loads(row[0])
         self.zones = set(s.get("zones", []))
@@ -316,6 +369,13 @@ class SQLiteWorldState(WorldState):
                 resources=e.get("resources", {}),
             )
             self.entities[entity.id] = entity
+        # Time anchor fields (D-030); default-safe for DBs created before 21.3.
+        import uuid as _uuid
+        self.scene_id = s.get("scene_id") or str(_uuid.uuid4())
+        self.beat_index = int(s.get("beat_index", 0))
+        self.scene_phase = s.get("scene_phase", "quiet")
+        self.prose_time_label = s.get("prose_time_label")
+        self.elapsed_category = s.get("elapsed_category", "beat")
 
     def _save(self) -> None:
         doc: dict[str, Any] = {
@@ -337,6 +397,12 @@ class SQLiteWorldState(WorldState):
                 }
                 for eid, e in self.entities.items()
             },
+            # Time anchor fields (D-030).
+            "scene_id": self.scene_id,
+            "beat_index": self.beat_index,
+            "scene_phase": self.scene_phase,
+            "prose_time_label": self.prose_time_label,
+            "elapsed_category": self.elapsed_category,
         }
         self._conn.execute(
             "INSERT OR REPLACE INTO world_state (key, value) VALUES (?, ?)",
@@ -386,6 +452,20 @@ class SQLiteWorldState(WorldState):
     def expire_maintained_truth(self, key: str) -> None:
         super().expire_maintained_truth(key)
         self._save()
+
+    def advance_beat(self, elapsed_category: str = "beat") -> None:
+        super().advance_beat(elapsed_category)
+        self._save()
+
+    def begin_scene_transition(
+        self,
+        scene_phase: str,
+        elapsed_category: str = "scene",
+        prose_time_label: str | None = None,
+    ) -> str:
+        new_scene_id = super().begin_scene_transition(scene_phase, elapsed_category, prose_time_label)
+        self._save()
+        return new_scene_id
 
 
 # --------------------------------------------------------------------------- #
@@ -720,6 +800,11 @@ def open_session(
     exactly as you would the in-memory variants. Call ``log.close()`` when the
     session ends.
 
+    Phase 21 — schema version guard: on a fresh DB the current
+    ENGINE_SCHEMA_VERSION is written. On a resumed DB the stored version must
+    match; a mismatch raises SchemaVersionError (fail-closed). Phase 22 adds
+    migration; Phase 21 only guards and rejects.
+
     BeatRunner wraps each beat in ``log.transaction()`` automatically. Manual use::
 
         log, world, scene = open_session("session.db")
@@ -729,6 +814,21 @@ def open_session(
     """
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
+
+    # Schema version guard (Phase 21).
+    conn.execute(_CREATE_SCHEMA_VERSION)
+    row = conn.execute("SELECT version FROM schema_version").fetchone()
+    if row is None:
+        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (ENGINE_SCHEMA_VERSION,))
+        conn.commit()
+    elif row[0] != ENGINE_SCHEMA_VERSION:
+        stored = row[0]
+        conn.close()
+        raise SchemaVersionError(
+            f"Session DB schema version {stored!r} does not match engine "
+            f"{ENGINE_SCHEMA_VERSION!r}. Phase 22 migration required."
+        )
+
     tx_active: list[bool] = [False]
     log = SQLiteEventLog(conn, _tx_active=tx_active)
     world = SQLiteWorldState(conn, _tx_active=tx_active)
@@ -736,3 +836,177 @@ def open_session(
     log._world_state_ref = world
     log._scene_ref = scene
     return log, world, scene
+
+
+# --------------------------------------------------------------------------- #
+# Session manifest and manager (Phase 21)                                       #
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class SessionManifest:
+    """Immutable metadata record for one saved session.
+
+    Stored in the session index (sessions_dir/index.json) separate from the
+    session DB itself, so the home screen can list sessions without opening
+    each DB. Fields are strings throughout for simple JSON round-trip.
+    """
+
+    session_id: str
+    campaign_id: str
+    title: str
+    created_at: str       # ISO-8601
+    updated_at: str       # ISO-8601
+    last_scene_summary: str
+    player_summary: str
+    db_path: str
+    schema_version: str
+    engine_version: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "session_id": self.session_id,
+            "campaign_id": self.campaign_id,
+            "title": self.title,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "last_scene_summary": self.last_scene_summary,
+            "player_summary": self.player_summary,
+            "db_path": self.db_path,
+            "schema_version": self.schema_version,
+            "engine_version": self.engine_version,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "SessionManifest":
+        return cls(
+            session_id=d["session_id"],
+            campaign_id=d["campaign_id"],
+            title=d["title"],
+            created_at=d["created_at"],
+            updated_at=d["updated_at"],
+            last_scene_summary=d.get("last_scene_summary", ""),
+            player_summary=d.get("player_summary", ""),
+            db_path=d["db_path"],
+            schema_version=d["schema_version"],
+            engine_version=d["engine_version"],
+        )
+
+
+class SessionManager:
+    """Creates, lists, and resumes sessions. Enforces the schema version guard.
+
+    All session DBs are stored in ``sessions_dir`` as ``{session_id}.db``.
+    The manifest index lives at ``sessions_dir/index.json`` and is the only
+    file that must be read to populate the home-screen session list.
+
+    Usage::
+
+        mgr = SessionManager("sessions/")
+        manifest, log, world, scene = mgr.create("my_campaign", "First Session")
+        # ... play beats ...
+        mgr.update_manifest(manifest.session_id, last_scene_summary="Arrived at the keep.")
+        log.close()
+
+        # Later:
+        manifest, log, world, scene = mgr.resume(manifest.session_id)
+    """
+
+    def __init__(self, sessions_dir: str | Path) -> None:
+        self._dir = Path(sessions_dir)
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._index_path = self._dir / "index.json"
+
+    def _load_index(self) -> dict[str, dict]:
+        if not self._index_path.exists():
+            return {}
+        return json.loads(self._index_path.read_text())
+
+    def _save_index(self, index: dict[str, dict]) -> None:
+        self._index_path.write_text(json.dumps(index, indent=2))
+
+    def list_sessions(self) -> list[SessionManifest]:
+        """Return all known sessions, ordered by most-recently-updated first."""
+        index = self._load_index()
+        manifests = [SessionManifest.from_dict(d) for d in index.values()]
+        return sorted(manifests, key=lambda m: m.updated_at, reverse=True)
+
+    def create(
+        self,
+        campaign_id: str,
+        title: str,
+        player_summary: str = "",
+    ) -> tuple[SessionManifest, SQLiteEventLog, SQLiteWorldState, SQLiteScene]:
+        """Create a new session and return (manifest, log, world, scene).
+
+        The session DB is created and the schema version is written by
+        open_session. Callers seed world state from their CampaignPackage and
+        optionally call attach_campaign for the plot graph.
+        """
+        session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        db_path = str(self._dir / f"{session_id}.db")
+
+        log, world, scene = open_session(db_path)
+
+        manifest = SessionManifest(
+            session_id=session_id,
+            campaign_id=campaign_id,
+            title=title,
+            created_at=now,
+            updated_at=now,
+            last_scene_summary="",
+            player_summary=player_summary,
+            db_path=db_path,
+            schema_version=ENGINE_SCHEMA_VERSION,
+            engine_version=ENGINE_SCHEMA_VERSION,
+        )
+
+        index = self._load_index()
+        index[session_id] = manifest.to_dict()
+        self._save_index(index)
+
+        return manifest, log, world, scene
+
+    def resume(
+        self,
+        session_id: str,
+    ) -> tuple[SessionManifest, SQLiteEventLog, SQLiteWorldState, SQLiteScene]:
+        """Resume a saved session. Returns (manifest, log, world, scene).
+
+        Raises KeyError if session_id is not in the index.
+        Raises SchemaVersionError (via open_session) if the DB version mismatches.
+        """
+        index = self._load_index()
+        if session_id not in index:
+            raise KeyError(f"Session {session_id!r} not found")
+        manifest = SessionManifest.from_dict(index[session_id])
+        log, world, scene = open_session(manifest.db_path)
+        return manifest, log, world, scene
+
+    def update_manifest(
+        self,
+        session_id: str,
+        *,
+        title: str | None = None,
+        last_scene_summary: str | None = None,
+        player_summary: str | None = None,
+    ) -> SessionManifest:
+        """Update mutable manifest fields; persist and return the updated manifest.
+
+        Call at session checkpoint or close to keep the index current.
+        Raises KeyError if session_id is not in the index.
+        """
+        index = self._load_index()
+        if session_id not in index:
+            raise KeyError(f"Session {session_id!r} not found")
+        d = dict(index[session_id])
+        d["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if title is not None:
+            d["title"] = title
+        if last_scene_summary is not None:
+            d["last_scene_summary"] = last_scene_summary
+        if player_summary is not None:
+            d["player_summary"] = player_summary
+        index[session_id] = d
+        self._save_index(index)
+        return SessionManifest.from_dict(d)

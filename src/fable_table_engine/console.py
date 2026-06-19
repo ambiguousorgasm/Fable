@@ -73,22 +73,79 @@ def parse_proposal(text: str, agent: str) -> Proposal:
 # Event renderer                                                                #
 # --------------------------------------------------------------------------- #
 
+# D-032: player-facing epistemic certainty labels. Backend-emitted; client never
+# computes these from prose or inference.
+EPISTEMIC_LABELS: dict[str, str] = {
+    "fact":        "Confirmed",
+    "claim":       "Claimed",
+    "observation": "Observed",
+    "theory":      "Suspected",
+}
+
+
+def epistemic_label(epistemic_type: str | None, *, superseded: bool = False) -> str:
+    """Return the player-facing certainty label for an epistemic_type (D-032).
+
+    When ``superseded`` is True (i.e. the event carries a D-031 superseded_by
+    value), the label is ``"Corrected/Superseded"`` regardless of type.
+    ``"Unknown"`` is reserved for GM-annotated Case File template slots that
+    have no evidence yet; it is not inferred from the absence of a commitment.
+    """
+    if superseded:
+        return "Corrected/Superseded"
+    return EPISTEMIC_LABELS.get(epistemic_type or "", "Unknown")
+
+
+def _commitment_labels(event: ProjectedEvent) -> str:
+    """Return a bracketed label string for any commitments on this event, or ''."""
+    if not event.commitments:
+        return ""
+    superseded = bool(event.superseded_by)
+    parts = []
+    for c in event.commitments:
+        label = epistemic_label(c.epistemic_type, superseded=superseded)
+        parts.append(f"[{label}: {c.subject}.{c.predicate}={c.value}]")
+    return " " + " ".join(parts)
+
+
 def render_event(event: ProjectedEvent) -> str | None:
     """Format one entitled event as a display string, or ``None`` to skip.
 
     Only event types meaningful to the player are rendered; GM-internal types
     (audit, system, effect_applied) are silent from the player's perspective.
+
+    Superseded events (D-031): events whose id appears in the derived_from of a
+    correction or retcon event carry superseded_by set by project_for(). They are
+    still rendered — not omitted — but prefixed with [superseded] so the player
+    can see the original and the correction together in the transcript.
+
+    Commitment labels (D-032): events with non-empty commitments append bracketed
+    epistemic labels so the player can see what was established and how certain it
+    is. The client never computes this — it comes from the backend commitment type.
     """
+    prefix = "[superseded] " if event.superseded_by else ""
+
+    labels = _commitment_labels(event)
+
+    if event.type == "correction":
+        return f"[correction] {event.content}{labels}" if event.content else None
+    if event.type == "retcon":
+        return f"[retcon] {event.content}{labels}" if event.content else None
     if event.type == "narration":
-        return event.content or None
+        return f"{prefix}{event.content}{labels}" if event.content else None
     if event.type == "ooc":
-        return f"[OOC] {event.author}: {event.content}" if event.content else None
+        return f"{prefix}[OOC] {event.author}: {event.content}{labels}" if event.content else None
     if event.type == "dice_roll":
-        return f"[roll] {event.content}" if event.content else None
+        # D-029: gm_only rolls must not reach the client render path.
+        if event.roll_visibility == "gm_only":
+            return None
+        return f"{prefix}[roll] {event.content}{labels}" if event.content else None
     if event.type == "resolution":
-        return f"[outcome] {event.content}" if event.content else None
+        return f"{prefix}[outcome] {event.content}{labels}" if event.content else None
     if event.type == "front_advance":
-        return f"[event] {event.content}" if event.content else None
+        return f"{prefix}[event] {event.content}{labels}" if event.content else None
+    if event.type == "action_lifecycle":
+        return None
     return None
 
 

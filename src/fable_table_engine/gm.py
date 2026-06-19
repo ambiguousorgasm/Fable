@@ -30,7 +30,7 @@ import anthropic
 
 from .character_sheet import CharacterSheet
 from .events import Commitment
-from .provider import ModelGateway
+from .provider import ModelGateway, ToolOutputError
 from .rules import Band, CheckResult
 from .world_state import WorldState
 
@@ -321,7 +321,12 @@ class AdjudicatorGM:
         world_summary: str,
         recent_events: str,
     ) -> ResolutionPlan:
-        """Evaluate `action` and return a structured resolution plan."""
+        """Evaluate `action` and return a structured resolution plan.
+
+        Retries once on a malformed tool response (Phase 22 structured-output
+        normalization). Raises ToolOutputError after two failed parse attempts
+        so BeatRunner can abort cleanly without propagating a raw exception.
+        """
         user_content = (
             f"Actor: {actor_sheet.entity_id} ({actor_sheet.concept})\n"
             f"Skills: {actor_sheet.skills or '(none listed — all 0)'}\n"
@@ -330,8 +335,7 @@ class AdjudicatorGM:
             f"Recent events:\n{recent_events}\n\n"
             f"Declared action: {action}"
         )
-        response = self._gateway.call(
-            "adjudicator",
+        call_kwargs = dict(
             model=self._model,
             max_tokens=512,
             system=_ADJUDICATOR_SYSTEM,
@@ -339,6 +343,21 @@ class AdjudicatorGM:
             tools=[_ADJUDICATE_TOOL],
             tool_choice={"type": "tool", "name": "adjudicate_action"},
         )
+        last_parse_error: Exception | None = None
+        for attempt in range(2):
+            response = self._gateway.call("adjudicator", **call_kwargs)
+            try:
+                return self._parse_response(response, actor_sheet)
+            except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+                last_parse_error = exc
+        raise ToolOutputError("adjudicator", 2, str(last_parse_error))
+
+    def _parse_response(self, response: Any, actor_sheet: CharacterSheet) -> ResolutionPlan:
+        """Extract ResolutionPlan from a raw adjudicator API response.
+
+        Raises KeyError / TypeError / RuntimeError on malformed content so that
+        the caller (evaluate) can retry or convert to ToolOutputError.
+        """
         for block in response.content:
             if block.type == "tool_use" and block.name == "adjudicate_action":
                 inp = block.input
@@ -365,8 +384,7 @@ class AdjudicatorGM:
                     seam=bool(inp.get("seam", False)),
                 )
         raise RuntimeError(
-            "adjudicator response contained no adjudicate_action tool call — "
-            "check tool_choice and model response"
+            "adjudicator response contained no adjudicate_action tool call"
         )
 
 
@@ -512,3 +530,37 @@ class WorldSimulator:
             else:
                 self._world.set_clock(name, {**clock, "current": new_val})
         return fired
+
+    def declare_scene_transition(
+        self,
+        scene_phase: str = "quiet",
+        elapsed_category: str = "scene",
+        prose_time_label: str | None = None,
+    ) -> str:
+        """Declare a scene boundary. Updates world time anchor and emits the structural event.
+
+        Returns the new scene_id. The client reads scene_id from the event stream
+        and never declares scene transitions itself (D-030 client contract).
+        """
+        import json
+        new_scene_id = self._world.begin_scene_transition(
+            scene_phase=scene_phase,
+            elapsed_category=elapsed_category,
+            prose_time_label=prose_time_label,
+        )
+        payload: dict = {
+            "scene_id": new_scene_id,
+            "scene_phase": scene_phase,
+            "elapsed_category": elapsed_category,
+        }
+        if prose_time_label is not None:
+            payload["prose_time_label"] = prose_time_label
+        self._log.append(
+            author=self._gm,
+            channel="system",
+            type="scene_transition",
+            content=json.dumps(payload),
+            audience=(self._gm,),
+            visibility="content",
+        )
+        return new_scene_id

@@ -11,8 +11,14 @@ scene/zone and described in prose, never a coordinate. See
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+# Elapsed-category values for the time anchor (D-030). Maps to D-026 clock
+# trigger_types so a scene_transition with elapsed_category="breather" advances
+# only clocks that trigger on "breather", etc.
+ELAPSED_CATEGORIES = frozenset({"beat", "exchange", "scene", "travel", "breather", "downtime"})
 
 
 @dataclass
@@ -49,6 +55,13 @@ class WorldState:
     connections: set[frozenset[str]] = field(default_factory=set)
     closeness: set[frozenset[str]] = field(default_factory=set)
     maintained_truths: dict[str, Any] = field(default_factory=dict)
+    # Time anchor fields (D-030). Backend-owned; client reads these from the
+    # event stream and never declares scene transitions itself.
+    scene_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    beat_index: int = 0
+    scene_phase: str = "quiet"          # current SceneMode value
+    prose_time_label: str | None = None # aesthetic only; no mechanical weight
+    elapsed_category: str = "beat"      # most recent elapsed-time unit
 
     def add_entity(self, entity: Entity) -> None:
         if entity.id in self.entities:
@@ -93,7 +106,10 @@ class WorldState:
         self.get_entity(entity_id).position = {"zone": zone}
 
     def zone_of(self, entity_id: str) -> str | None:
-        pos = self.get_entity(entity_id).position
+        entity = self.entities.get(entity_id)
+        if entity is None:
+            return None
+        pos = entity.position
         return pos.get("zone") if pos else None
 
     def entities_in(self, zone: str) -> set[str]:
@@ -130,3 +146,38 @@ class WorldState:
     def expire_maintained_truth(self, key: str) -> None:
         """Remove a maintained truth entry. No-op if already absent."""
         self.maintained_truths.pop(key, None)
+
+    # --- time anchor (D-030) ------------------------------------------------
+
+    def advance_beat(self, elapsed_category: str = "beat") -> None:
+        """Increment beat_index and record the elapsed-time category."""
+        if elapsed_category not in ELAPSED_CATEGORIES:
+            raise ValueError(
+                f"elapsed_category must be one of {sorted(ELAPSED_CATEGORIES)}, "
+                f"got {elapsed_category!r}"
+            )
+        self.beat_index += 1
+        self.elapsed_category = elapsed_category
+
+    def begin_scene_transition(
+        self,
+        scene_phase: str,
+        elapsed_category: str = "scene",
+        prose_time_label: str | None = None,
+    ) -> str:
+        """Open a new scene: fresh scene_id, beat_index reset, phase updated.
+
+        Returns the new scene_id so callers can include it in the structural
+        event content without a second read.
+        """
+        if elapsed_category not in ELAPSED_CATEGORIES:
+            raise ValueError(
+                f"elapsed_category must be one of {sorted(ELAPSED_CATEGORIES)}, "
+                f"got {elapsed_category!r}"
+            )
+        self.scene_id = str(uuid.uuid4())
+        self.beat_index = 0
+        self.scene_phase = scene_phase
+        self.elapsed_category = elapsed_category
+        self.prose_time_label = prose_time_label
+        return self.scene_id

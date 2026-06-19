@@ -63,6 +63,7 @@ class RulesEngine:
         tn: int,
         audience: tuple[str, ...] | list[str] = (),
         reason: str = "",
+        roll_visibility: str = "table",
     ) -> CheckResult:
         """Resolve one 3d6 + Skill vs TN check and log the cold result.
 
@@ -70,9 +71,15 @@ class RulesEngine:
         randomness); the resolution event is written through the mechanical
         capability and linked to the dice event via `derived_from`, so its
         provenance is auditable.
+
+        `roll_visibility` tags both the dice_roll and resolution events (D-029).
+        `gm_only` rolls must use a GM-only audience; that is the caller's
+        responsibility — resolve_check enforces the tag, not the audience.
         """
         roll = self._dice.roll(
-            3, 6, author=actor, audience=audience, reason=reason or f"check vs TN {tn}"
+            3, 6, author=actor, audience=audience,
+            reason=reason or f"check vs TN {tn}",
+            roll_visibility=roll_visibility,
         )
         roll_total = roll.total + skill
         margin = roll_total - tn
@@ -89,6 +96,7 @@ class RulesEngine:
             audience=audience,
             visibility="content",
             derived_from=(roll.event_id,),
+            roll_visibility=roll_visibility,
             _capability=_MECHANICAL_CAPABILITY,
         )
         return CheckResult(

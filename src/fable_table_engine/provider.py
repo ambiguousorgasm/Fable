@@ -1,17 +1,29 @@
-"""Provider gateway + isolated telemetry (Phase 14; D-017, D-022).
+"""Provider gateway + isolated telemetry (Phase 14 + Phase 22; D-017, D-022).
 
 ModelGateway is the single controlled seam for all model calls. Every call
 site (AdjudicatorGM, NarratorGM, CharacterAgent, Auditor) routes through it.
 TelemetrySink records operational data (latency, tokens, cost) completely
 outside fictional state — never in the event log, belief stores, or canon.
+
+Phase 22 additions (D-017):
+- ProviderAdapter ABC: formal abstraction over provider-specific APIs.
+- AnthropicAdapter: wraps the Anthropic SDK client.
+- ToolOutputError: raised when a model returns a malformed tool-call response.
+- ModelGateway now accepts ProviderAdapter (or raw client for backward compat)
+  and an optional SettingsManager for per-role model resolution.
 """
 from __future__ import annotations
 
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 import anthropic
+
+if TYPE_CHECKING:
+    from .settings import SettingsManager
 
 # Per-token pricing in USD.
 # Source: Anthropic pricing cached 2026-06-04 via claude-api skill.
@@ -74,16 +86,53 @@ class CallRecord:
     latency_ms: float
 
 
+class CostCeilingStatus(str, Enum):
+    """Session-level cost ceiling check result (D-042).
+
+    OK      — cumulative cost is below 80 % of the ceiling.
+    WARNING — cumulative cost is ≥ 80 % and < 100 % of the ceiling.
+    EXCEEDED — cumulative cost has reached or passed the ceiling.
+
+    When ceiling is None, always returns OK.
+    """
+
+    OK = "ok"
+    WARNING = "warning"
+    EXCEEDED = "exceeded"
+
+
 class TelemetrySink:
     """In-process telemetry store. Zero coupling to fictional state (D-022).
 
-    `records` is append-only. `summary()` returns totals and per-role
+    ``records`` is append-only. ``summary()`` returns totals and per-role
     breakdowns. Never referenced by EventLog, CommitPipeline, or
     ContextAssembler.
+
+    Phase 22 (D-042): accepts an optional ``cost_ceiling_usd``. Call
+    ``ceiling_status()`` to check whether the session has approached or
+    exceeded the configured budget. Default policy is advisory-only — the
+    engine checks status and surfaces a warning; a hard cutoff requires the
+    caller to act on EXCEEDED.
     """
 
-    def __init__(self) -> None:
+    _WARNING_FRACTION: float = 0.80
+
+    def __init__(self, cost_ceiling_usd: float | None = None) -> None:
         self.records: list[CallRecord] = []
+        self.cost_ceiling_usd = cost_ceiling_usd
+
+    def total_cost_usd(self) -> float:
+        return sum(r.cost_usd for r in self.records)
+
+    def ceiling_status(self) -> CostCeilingStatus:
+        if self.cost_ceiling_usd is None:
+            return CostCeilingStatus.OK
+        total = self.total_cost_usd()
+        if total >= self.cost_ceiling_usd:
+            return CostCeilingStatus.EXCEEDED
+        if total >= self.cost_ceiling_usd * self._WARNING_FRACTION:
+            return CostCeilingStatus.WARNING
+        return CostCeilingStatus.OK
 
     def record(self, r: CallRecord) -> None:
         self.records.append(r)
@@ -130,55 +179,170 @@ class ModelCallError(Exception):
         )
 
 
+class ToolOutputError(Exception):
+    """Raised when a model returns a malformed or absent tool-call response.
+
+    Distinct from ModelCallError (network / timeout). Signals that the API call
+    succeeded but the response content did not match the expected tool schema
+    after all normalization retry attempts.
+    """
+
+    def __init__(self, role: str, attempts: int, reason: str) -> None:
+        self.role = role
+        self.attempts = attempts
+        self.reason = reason
+        super().__init__(
+            f"Tool output malformed for role {role!r} after {attempts} "
+            f"attempt(s): {reason}"
+        )
+
+
+# ------------------------------------------------------------------
+# ProviderAdapter
+# ------------------------------------------------------------------
+
+class ProviderAdapter(ABC):
+    """Abstraction over a specific model provider's API.
+
+    Phase 22 introduces this interface to allow future non-Anthropic providers.
+    The only supported implementation for now is AnthropicAdapter.
+
+    Implementations must be stateless with respect to model calls — the same
+    adapter instance may be reused across concurrent (or sequential) calls.
+    """
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Provider name (e.g., ``'anthropic'``)."""
+
+    @abstractmethod
+    def call(self, role: str, model: str, **kwargs: Any) -> Any:
+        """Make one model call and return the raw provider response.
+
+        ``role`` is forwarded for logging/debugging; it must not influence
+        the call itself (callers set it; adapters should not branch on it).
+        ``model`` must be the fully-qualified model ID string.
+        All remaining ``kwargs`` are provider-specific (messages, tools, etc.).
+        """
+
+
+class AnthropicAdapter(ProviderAdapter):
+    """Anthropic SDK adapter.
+
+    Wraps ``anthropic.Anthropic`` (or any duck-typed mock) and forwards calls
+    to ``client.messages.create(model=model, **kwargs)``.
+    """
+
+    def __init__(self, client: anthropic.Anthropic) -> None:
+        self._client = client
+
+    @property
+    def name(self) -> str:
+        return "anthropic"
+
+    def call(self, role: str, model: str, **kwargs: Any) -> Any:
+        return self._client.messages.create(model=model, **kwargs)
+
+
+# Maps gateway role strings to SettingsManager keys.
+# Roles not in this map fall back to f"{role}_model" as the settings key.
+_ROLE_TO_SETTINGS_KEY: dict[str, str] = {
+    "adjudicator": "gm_adjudicator_model",
+    "narrator": "gm_narrator_model",
+    "character_agent": "character_agent_default_model",
+}
+
+_FALLBACK_MODEL = "claude-opus-4-8"
+
 # Transient errors worth retrying.
 _RETRYABLE = (anthropic.APITimeoutError, anthropic.APIConnectionError)
 
 
 class ModelGateway:
-    """Single controlled seam for all model calls (Phase 14; D-017, D-022).
+    """Single controlled seam for all model calls (Phase 14 + 22; D-017, D-022).
 
-    Wraps an ``anthropic.Anthropic`` client (or any duck-typed mock). All GM,
-    narrator, character-agent, and auditor calls route through ``call()``.
-    Records operational telemetry to TelemetrySink — never to fictional state.
+    Phase 22: accepts a ``ProviderAdapter`` (or a raw Anthropic client for
+    backward compatibility — wrapped automatically in ``AnthropicAdapter``).
+    Accepts an optional ``SettingsManager`` for per-role model resolution.
+
+    Model resolution for each call (highest priority first):
+    1. ``SettingsManager.get(settings_key)`` for the role, if settings configured.
+    2. ``model=`` kwarg from the call site (legacy / test usage).
+    3. ``SettingsRegistry.DEFAULTS.get(settings_key, _FALLBACK_MODEL)``.
+
+    All GM, narrator, character-agent, and auditor calls route through
+    ``call()``. Records operational telemetry to TelemetrySink — never to
+    fictional state.
 
     ``timeout_secs`` is forwarded to the SDK as the per-call wall-clock limit.
     ``max_retries`` controls how many additional attempts follow the first
-    failure on transient errors (APITimeoutError, APIConnectionError). Each retry
-    waits ``0.5 * 2^attempt`` seconds (0.5 s, 1.0 s, …). Non-transient errors
-    (4xx, auth, etc.) propagate immediately without retry.
-
-    Raises ModelCallError after all attempts fail.
+    failure on transient errors. Each retry waits ``0.5 * 2^attempt`` seconds.
+    Non-transient errors propagate immediately. Raises ModelCallError after all
+    attempts fail.
 
     Usage::
 
-        gw = ModelGateway(client)
-        response = gw.call("adjudicator", model="claude-sonnet-4-6", ...)
+        gw = ModelGateway(client)                       # backward compat
+        gw = ModelGateway(AnthropicAdapter(client))     # Phase 22 style
+        gw = ModelGateway(client, settings=settings_mgr)  # per-role routing
+        response = gw.call("adjudicator", model="claude-opus-4-8", ...)
     """
 
     def __init__(
         self,
-        client: anthropic.Anthropic,
+        client_or_adapter: anthropic.Anthropic | ProviderAdapter,
         sink: TelemetrySink | None = None,
         timeout_secs: float | None = 60.0,
         max_retries: int = 1,
+        settings: SettingsManager | None = None,
     ) -> None:
-        self._client = client
+        if isinstance(client_or_adapter, ProviderAdapter):
+            self._adapter = client_or_adapter
+            self._client = getattr(client_or_adapter, "_client", None)
+        else:
+            self._adapter = AnthropicAdapter(client_or_adapter)
+            self._client = client_or_adapter
         self.sink = sink or TelemetrySink()
         self.timeout_secs = timeout_secs
         self.max_retries = max_retries
+        self._settings = settings
 
-    def call(self, role: str, **kwargs: Any) -> anthropic.types.Message:
-        """Call ``client.messages.create`` with timeout and retry; record telemetry."""
+    def _resolve_model(self, role: str, kwargs: dict[str, Any]) -> str:
+        """Return the model ID to use for this call.
+
+        Checks settings first; falls back to call-site kwarg; then registry default.
+        """
+        settings_key = _ROLE_TO_SETTINGS_KEY.get(role, f"{role}_model")
+        if self._settings is not None:
+            value = self._settings.get(settings_key)
+            if value:
+                return value
+        kwarg_model = str(kwargs.get("model", ""))
+        if kwarg_model:
+            return kwarg_model
+        from .settings import SettingsRegistry
+        return SettingsRegistry.DEFAULTS.get(settings_key, _FALLBACK_MODEL)
+
+    def call(self, role: str, **kwargs: Any) -> Any:
+        """Make a model call via the adapter; record telemetry; retry on transient errors.
+
+        ``model=`` in kwargs is used as a fallback when no settings override
+        exists for the role. The resolved model is always passed to the adapter
+        (it is NOT left in kwargs).
+        """
         if self.timeout_secs is not None:
             kwargs.setdefault("timeout", self.timeout_secs)
 
-        model = str(kwargs.get("model", ""))
+        model = self._resolve_model(role, kwargs)
+        kwargs.pop("model", None)  # adapter sets model; don't double-pass
+
         last_error: Exception | None = None
 
         for attempt in range(1 + self.max_retries):
             t0 = time.monotonic()
             try:
-                response = self._client.messages.create(**kwargs)
+                response = self._adapter.call(role, model, **kwargs)
             except _RETRYABLE as exc:
                 last_error = exc
                 latency_ms = (time.monotonic() - t0) * 1000.0

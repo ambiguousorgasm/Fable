@@ -13,7 +13,7 @@ import random
 from dataclasses import dataclass
 
 from .event_log import _MECHANICAL_CAPABILITY, EventLog
-from .events import Visibility
+from .events import ROLL_VISIBILITY_LEVELS, Visibility
 
 
 @dataclass(frozen=True)
@@ -38,9 +38,14 @@ class DiceService:
         audience: tuple[str, ...] | list[str] = (),
         reason: str = "",
         visibility: Visibility = "content",
+        roll_visibility: str = "table",
     ) -> DiceResult:
         if count < 1 or sides < 2:
             raise ValueError("roll needs count >= 1 and sides >= 2")
+        if roll_visibility not in ROLL_VISIBILITY_LEVELS:
+            raise ValueError(
+                f"roll_visibility must be one of {sorted(ROLL_VISIBILITY_LEVELS)}"
+            )
         rolls = tuple(self._rng.randint(1, sides) for _ in range(count))
         total = sum(rolls)
         notation = f"{count}d{sides}"
@@ -54,6 +59,7 @@ class DiceService:
             content=content,
             audience=audience,
             visibility=visibility,
+            roll_visibility=roll_visibility,
             _capability=_MECHANICAL_CAPABILITY,
         )
         return DiceResult(notation=notation, rolls=rolls, total=total, event_id=event.id)
