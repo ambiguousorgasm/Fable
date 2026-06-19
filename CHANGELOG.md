@@ -4,6 +4,21 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Public repo hygiene: untrack internal directories, update .gitignore
+
+**Removed from git tracking (files remain on local disk):**
+- `uploads/` — working upload directory: internal schema draft (v7), two old HTML mockups, a second rules PDF, a rules markdown source, and a third-party Chrome extension zip (`ST-Multi-Model-Chat-main.zip`). None of these are public release assets.
+- `memory/` — Claude Code working memory: internal project planning notes, stale roadmap structure, mockup gap analysis. Private by design; should never be published.
+- `image_prompts/` — five image generation style prompt files. Image generation (D-038) is deferred post-core; these are internal creative assets.
+
+**`.gitignore`** — added `uploads/`, `memory/`, `image_prompts/` to prevent accidental re-tracking.
+
+`static/fable_rules.pdf` — retained; intentionally public.
+
+No secrets, personal paths, or credentials were found in any tracked file outside the one self-referential CHANGELOG note describing a prior fix.
+
+---
+
 ## 2026-06-19 — public/README.md and public/docs/setup.md: beta content pass
 
 **`public/README.md`** rewritten for completeness:

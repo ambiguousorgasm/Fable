@@ -36,6 +36,11 @@ config/credentials.json
 # Local Claude Code settings
 .claude/settings.local.json
 
+# Working/internal directories — never publish
+uploads/
+memory/
+image_prompts/
+
 # Databases / runtime artifacts
 *.sqlite
 *.sqlite3
