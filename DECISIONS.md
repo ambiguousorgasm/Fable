@@ -133,11 +133,13 @@ The substance is *when*, not just *who*. Override is the **reserved exception**,
 **Relates to:** §4.3 (blackboard), §7.4 (plot-manager), D-004 / §7.5 (the pattern being reused), D-006 (NPC proposal handling), D-008 (same principle, moment-to-moment), the auditor (phase 8). Build deferred to phase 9; ownership shape recorded now.
 **Impact:** Plot-manager (sole writer), plot graph store, GM / character agents (propose), auditor (coherence gate), beat-loop divergence handling.
 
-## D-017 · LLM provider strategy: Claude-first vs. provider-agnostic adapter · Open · 2026-06-18
+## D-017 · LLM provider strategy: Claude-first vs. provider-agnostic adapter · Resolved · 2026-06-19
 **Question:** Should the system design against a single provider (Claude/Anthropic) or include a provider-agnostic LLM adapter layer?
 **Options:** (a) Claude-first — build against the Anthropic SDK directly; defer abstraction. (b) Provider-agnostic from the start — define an adapter interface all agents call through, with Claude as the default implementation.
 **Decision direction:** (a) for now. Design and build against Claude (Anthropic SDK, tool-use API) as the primary provider. A provider-agnostic adapter is a named future goal. When implemented, it must abstract: message sending, structured output (tool-call formats differ by provider), context window limits, and streaming behavior. The interface should also expose **suggested model defaults per agent role** (cold GM, warm GM, character agents, auditor, etc.) that the user can override — model selection is a user configuration concern, not a hardcoded choice.
 **Timing update (2026-06-18, post-phase-7 review):** The "cheapest moment was phase 5" window has passed; phases 5–7 are built Claude-first. The next natural insertion point was before Phase 9 — this window has also now passed (phases 9–20 are built). The current insertion point is Phase 22 (beta hardening). `ModelGateway` IS the provider seam; all callers route through it. A full adapter interface (swappable provider, per-role model routing, structured-output normalization) is Phase 22 work. Do not build the adapter before Phase 22.
+
+**Phase 22 priority note (2026-06-19):** Multi-model routing is **Phase 22 must-ship first**, not a medium-priority refactor. Without per-role model routing, the settings system's model slots (D-041) are cosmetic — all roles hit the same model at the same cost. A 4-seat session running every role on a premium model is unsustainable for any session of meaningful length. Routing unblocks: (1) adjudicator on a reliable structured-output model; (2) character agents and auditor on cheaper/faster models; (3) meaningful cost-per-role telemetry. The context budgeter (D-042) and lorebook v1 (D-043) should be built concurrently or immediately after, but routing comes first because it changes cost structure and thus determines whether D-042 budget policies are calibrated against realistic costs.
 **Current coupling:** `AdjudicatorGM`, `NarratorGM`, `CharacterAgent`, `Auditor`, `SocialInterpreter` all receive `ModelGateway` and call `gw.call(role, model=..., ...)`. `ModelGateway.call()` forwards to `client.messages.create`. The seam is there; generalization is deferred.
 **Hardest normalization problem:** The `AdjudicatorGM`'s correctness guarantee depends on Anthropic's forced tool-call mechanism. Not all providers offer this. Any adapter layer needs an explicit policy for providers that can't guarantee structured output — schema repair, retry loops, or validation fallbacks. This is the non-trivial part; don't assume provider APIs are interchangeable at this level.
 **Relates to:** D-007 (tool-use mechanism is currently Claude-specific), D-005 (cost/latency budget), phases 9–11 (remaining agent construction).
@@ -452,6 +454,20 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-039** · Voice/TTS → manual click-to-play; off by default; per-speaker voice IDs in `settings/voice.json`; API key in env only; cached per event-id+voice-id hash; post-Phase-21 track; no game-state coupling · 2026-06-19.
 - **D-040** · Campaign generation pipeline → `CampaignCompiler` → validation → repair/retry → `CampaignPackage`; raw input never in GM context; both auto-generate and from-prompt paths; deferred to Campaign-Authoring Studio post-v1; Phase 21 loads pre-built packages only · 2026-06-19.
 - **D-041** · Settings system → layered JSON (code defaults → `settings/models.json` → `settings/campaigns/{campaign_id}.json`); GUI shows campaign-aware character agent slots derived from roster; all essential models have defaults; API keys in env only (never in files); per-setting Reset button; file path shown with open-in-editor button · 2026-06-19.
+- **D-017** · LLM provider strategy → `ProviderAdapter` ABC + `AnthropicAdapter` in `provider.py`; per-role model resolution in `ModelGateway._resolve_model()` (settings → kwarg → registry default); `ToolOutputError` for malformed tool responses; `AdjudicatorGM` 2-attempt retry; `BeatRunner` aborts cleanly on `ToolOutputError`. Anthropic-only for now; adapter interface enables future providers · 2026-06-19.
+- **D-042** · Context budget management → `budgeter.py`: `ContextBudgetPolicy`, `ContextBudgeter`, `TokenEstimator`, `BudgetCheckResult`; per-role defaults (6 roles); `from_settings` classmethod; event windows wired into `BeatRunner._events_summary` / `_narrator_context` calls and `CharacterAgent.propose()`; `CostCeilingStatus` + `TelemetrySink.ceiling_status()` for per-session cost ceiling (advisory-only default). `SettingsRegistry.DEFAULTS` expanded with 12 budget keys. `CONTEXT_EVENT_WINDOW` kept as backward-compat fallback · 2026-06-19.
+- **D-043** · Lorebook v1 → `lorebook.py`: `LoreEntry` (frozen; `audience_permits()`), `LoreDeck` (audience-gated collection), `LoreAssembler` (keyword match against entitled corpus; `max_entries`; `lore_context_block()`). Audience gate fires before keyword match — `gm_only` entries never injected into player context regardless of corpus content (constraint 4). `ContextAssembler.lore_for()` opt-in. `CampaignPackage.lore_entries` + `lore_deck()`. `lorebook_injection_window` setting. Option A (keyword match); (B)/(C) deferred · 2026-06-19.
+
+**Open — Phase 22:**
+- (all D-017, D-042, D-043 items resolved; remaining Phase 22 work is golden transcripts, replay/fuzz tests, property tests for `EffectExecutor` atomic groups (D-037), save-format migration, security review)
+
+**Open — deferred / ongoing:**
+- **D-003** · Positioning queries → free OOC clarification for MVP; IC assessment for exploration-heavy scenes later.
+- **D-005** · Spotlight → director-picks-next for now; agent bidding after cost/latency budget exists.
+- **D-006** · NPC management → GM puppets walk-ons; manager/promotion for recurring NPCs.
+- **D-012** · Perception fidelity → thin zone-based model built; richer propagation deferred.
+- **D-034** · Opening model → extend `MaintainedTruth` with optional `group`/`effect_text` (recommendation A).
+- **D-038** · Image generation → post-Phase-21; full spec in decision body. Portrait policy decided: generate once, store artifact, never auto-regenerate per scene.
 
 ## D-035 · Beat step-5 pre-transaction event design · Settled · 2026-06-18
 **Question:** `BeatRunner.run()` calls `resolve_check()` at step 5 before entering `with self._log.transaction():` at step 6. Dice-roll and resolution events are therefore committed outside the beat transaction and cannot be rolled back if the post-narration audit blocks the beat. Is this a gap or an intentional design choice?
@@ -500,8 +516,10 @@ These are implementation defaults used until a decision is formally resolved. Th
 | `map_background` | Any fast model | Aesthetic layer only; deterministic rendering overlaid on top |
 | `text_graphic` | Ideogram, Recraft | Labeled artifacts, symbolic posters, in-world text-heavy items |
 
+**Portrait generation policy (decided constraint):** Character portraits are generated **once per character** — at character creation or first-render — and stored as artifacts. They are **not regenerated per scene, per session, or per session-open**. Face consistency across sessions depends on the stored artifact, not on model consistency. The style profile controls aesthetics; it does not control identity. A user or GM may manually trigger a portrait refresh via an explicit UI action, but the engine never auto-triggers portrait regeneration. This is the only viable path to cross-session face consistency without a dedicated identity-preservation model; do not build per-scene portrait generation.
+
 **Open questions:**
-- Which model wins for character portrait consistency across sessions? (Requires controlled consistency testing before locking.)
+- Which model wins for character portrait consistency within a single generation? (Requires controlled consistency testing before locking the model recommendation in D-038.)
 - Style profile file format: JSON, TOML, or YAML? Location relative to session/campaign or global user config?
 - Deterministic map rendering architecture: SVG/Canvas/third-party lib? How do FABLE zone positions map to visual coordinates for overlay?
 - Definition of "major scene transition" as a cache trigger: zone transition only, or also explicit GM scene declaration events, downtime transitions?
@@ -693,6 +711,70 @@ attach_campaign() / open_session() as normal
 **Implementation:** `atomic_group: str | None = None` will be added to the `TypedEffect` base class and all typed effect dataclasses. `EffectExecutor.apply_all()` will group effects by `atomic_group`, apply each group as a unit (if any effect in the group fails, all are skipped; no effects from that group land). Effects with `atomic_group=None` remain independent. **Implementation deferred to Phase 22** — the executor behavior and property tests both land there. Phase 17's `schemas/campaign.schema.json` reserves `atomic_group` as a future field in palette effect specs.
 **Relates to:** `EffectExecutor.apply_all()` (`effects.py`), Phase 13 consequence palette, D-025 (palette design), Phase 22 (property tests for partial application).
 **Impact (deferred to Phase 22):** `TypedEffect` base class (`atomic_group` field), `EffectExecutor.apply_all()` (group-aware apply loop), `schemas/campaign.schema.json` (`atomic_group` in effect specs).
+
+---
+
+## D-043 · Lorebook / world-info: injection architecture and audience-gate mechanism · Resolved · 2026-06-19
+
+**Question:** When a lorebook/world-info system is added in Phase 22, how should entries be retrieved and injected into role contexts? SillyTavern-style keyword triggers on raw event content are unsafe: the trigger can fire from content the receiving POV was not in the audience of, injecting facts that POV is not entitled to know.
+
+**Why it matters:** If a lorebook entry about a secret faction is triggered by a keyword in an NPC's dialogue (visible to GM only), and the trigger fires for the player's context too (because the keyword appears somewhere in the event stream), the player's prompt receives lorebook content outside their entitled belief projection. This is an audience-leakage vector structurally identical to the D-013 sequence-number side-channel.
+
+**Decided constraints (non-negotiable regardless of option chosen):**
+1. Lorebook entries are **background/setting context only** — never current-state authority. Event log, world state, canon ledger, disposition graph, and plot graph override lorebook entries on any conflict.
+2. Entries carry an **audience class** (`all`, `gm_only`, `player_{id}`) assigned at authoring time.
+3. Retrieval and injection happen **inside `ContextAssembler`** — never at the gateway, never client-side, and never keyed from raw event content the requesting POV cannot see at content level.
+4. Entry injection for a POV is driven by what **that POV's entitled belief projection contains** — not by raw event content, global search, or any data outside the POV's authorized view.
+5. A `gm_only` entry is never injected into any player context, regardless of keyword match.
+6. **D-042 (context budgeter) is a hard prerequisite.** Lorebook injection increases prompt size; it must not be wired in before the budgeter can account for the additional tokens.
+
+**Options:**
+- **(A) Keyword match against POV belief projection (Phase 22 v1 recommendation):** an entry fires when its keywords appear in the entitled event text or committed fact labels of that POV's projection only. Deterministic, auditable, no API calls.
+- **(B) Semantic retrieval against POV belief store:** vector similarity over the N most relevant entries, filtered by audience class before any embedding comparison. Better relevance; requires an embedding model and a vector store. Natural upgrade from (A).
+- **(C) GM-curated explicit injection:** entries are tagged with `scene_ids` or plot-graph node IDs; the GM or plot manager activates entries by tag, not via keyword trigger. A complementary override mechanism, not a replacement for (A).
+
+**Recommendation:** (A) for Phase 22 v1. Keyword match is deterministic, audience-safe, and adds no API calls. Audience class gate fires before any content assembly. (C) is a useful complement for entries the GM wants always-present in a given scene. (B) is a Phase 23+ upgrade; defer until (A) proves insufficient for relevance.
+
+**Relates to:** D-001 (lorebook injection is a read-time projection-layer operation), D-042 (hard prerequisite — budgeter must partially exist before lorebook is wired in), D-038 (image prompt source is the same audience-filtered projection lorebooks are filtered by), `ContextAssembler`, Phase 22.
+
+**Impact (deferred to Phase 22, after D-042 partial):** New `lorebook.py` module (`LoreEntry`, `LoreDeck`, `LoreAssembler`); `ContextAssembler` gains an optional `LoreAssembler` collaborator (disabled when absent; lorebook injection is opt-in); `settings/models.json` schema gains `lorebook_injection_window`; `CampaignPackage` gains `lore_entries` field with per-entry `audience_class`.
+
+---
+
+## D-042 · Context budget management: where and how to enforce token limits · Open · 2026-06-19
+
+**Question:** Prompts sent to each role (adjudicator, narrator, character agents, social interpreter, auditor, plot-manager) can grow unbounded as event history accumulates. Where should the token budget be enforced, how should limits be applied per role, and how should the engine behave when a context is near or over budget?
+
+**Why it matters:** Without a budget policy, long sessions silently approach model context limits, causing latency spikes, cost overruns, or hard API failures. The limit must be applied *before* the prompt is fully assembled — not at the gateway, where only the assembled string is visible. Dropping events at the gateway is too late; the assembler must know which events to include or summarize.
+
+**Architectural constraint (confirmed):** `ContextBudgeter` belongs at **context-assembly time**, not between `ContextAssembler` and `ModelGateway`. Correct data flow: `belief store → ContextBudgeter → prompt strings → ModelGateway → model`. The gateway sees only the assembled prompt; it cannot choose which events to drop. Any enforcement that lives only at the gateway is post-hoc and incomplete.
+
+**`limit=12` note:** The current `_events_summary` and `_narrator_context` functions in `beat.py` use `CONTEXT_EVENT_WINDOW = 12` (module-level constant as of this decision) as a hard recent-event window. This constant is a budget placeholder, not a full budget policy. Phase 22 replaces it with per-role `ContextBudgetPolicy` entries loaded from `SettingsManager`.
+
+**Options:**
+- **(A) Per-role hard token cap via preflight estimation**: before assembling the prompt, call `count_tokens` on each section candidate; drop/summarize older events until the assembled prompt fits within a per-role cap. Accurate but adds one API call per prompt.
+- **(B) Per-role event-window heuristic**: each role has a configured max-event count (recent-window) plus a soft cap on summary text. No preflight API call. Fast and predictable; may over- or under-shoot actual token count.
+- **(C) Hybrid**: recent-window heuristic as primary gate (no extra API call for routine turns); preflight `count_tokens` call only when the estimated token count (word-count proxy) is within 20 % of the per-role cap. Balances accuracy and latency.
+
+**Recommendation:** (C). Preflight estimation is the right tool but adding it on every call adds measurable latency. The hybrid approach spends the preflight call only when the heuristic signals proximity to the limit. Per-role caps are explicit in the settings system so they can be tuned per deployment.
+
+**Per-role budget policies (Phase 22 defaults):**
+
+| Role | Recommended max tokens | Required-always sections | Event window |
+|---|---|---|---|
+| `gm_adjudicator` | 40 000 | World state, canon, scene | Recent 20 |
+| `gm_narrator` | 20 000 | Outcome, committed effects | Recent 8 |
+| `character_agent` | 12 000 | Sheet, persona | Recent 12 |
+| `social_interpreter` | 8 000 | Dialogue events only | Recent 6 |
+| `auditor` | 16 000 | Beat record, palette | Recent 10 |
+| `plot_manager` | 24 000 | Full plot graph | Recent 15 |
+
+**Context quality check (advisory):** After trimming, check: (1) required-always sections survived; (2) at least one event is present for roles that require context; (3) the assembled prompt is below cap. If checks fail, emit an `AuditFlag(tier=WARNING)` rather than silently sending a degraded prompt.
+
+**Cost ceiling:** `TelemetrySink` already receives per-call cost data. Phase 22 adds a per-session cost ceiling: when cumulative cost exceeds the cap, the engine emits an advisory log event and the interface surfaces a warning. Hard cutoff is opt-in (default: advisory only).
+
+**Relates to:** `ContextAssembler` (belief store projection), `ModelGateway` (call site), `TelemetrySink` (cost tracking), `SettingsManager` (per-role cap configuration), D-041 (settings hierarchy — budget policies live in `settings/models.json`), Phase 22 (implementation target).
+**Impact (deferred to Phase 22):** New `budgeter.py` module (`ContextBudgeter`, `ContextBudgetPolicy`, `TokenEstimator`); `ContextAssembler` gains a `ContextBudgeter` collaborator; `SettingsRegistry` gains six per-role cap defaults; `settings/models.json` schema gains budget entries.
 
 ---
 

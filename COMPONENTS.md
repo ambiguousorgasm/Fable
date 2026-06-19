@@ -189,7 +189,30 @@ Code, not models. These live *below* the determinism boundary and carry truth.
 - **Depends on:** World state, canon ledger, event log.
 - **Depended-on-by:** GM agent (declarations), auditor (needs committed facts), beat loop (step 6).
 
-### Channel router / interface
+### Home screen (`HomeScreen`)
+- **Location:** `src/fable_table_engine/interface.py`
+- **Purpose:** Navigation state for the FABLE home screen. Lists pre-built `CampaignPackage` objects from a campaigns directory and saved sessions via `SessionManager`. Renders the home screen as a display string. Does not create or resume sessions — model wiring is the caller's responsibility.
+- **Reads:** Campaign JSON files, `SessionManager` index, filesystem.
+- **Writes:** Nothing (pure navigation and rendering).
+- **Depends on:** `CampaignPackage` / `load_campaign`, `SessionManager`, `SettingsManager`.
+- **Depended-on-by:** Terminal REPL, future GUI.
+
+### Play interface (`PlayInterface`)
+- **Location:** `src/fable_table_engine/interface.py`
+- **Purpose:** Rendering and input layer over `PlaytestSession`. Accesses the event log only through `PlaytestSession` (which reads via `project_for(player_id)` — never `log.all()`). Never computes audiences or derives hidden state. Provides: `submit(text)` → new entitled lines; `history()` → full entitled history; `render_settings()` → settings panel display string; `render_status()` → time-anchor summary.
+- **Character slot awareness:** `roster` parameter (entity IDs) drives the character-agent slot rows in `render_settings()`. Slots are derived from the roster at call time.
+- **Reads:** `PlaytestSession` (entitled event stream via `project_for`); `SettingsManager`; optional `WorldState` (for time-anchor status).
+- **Writes:** Nothing (pure rendering + beat submission to `PlaytestSession`).
+- **Depends on:** `PlaytestSession`, `SettingsManager`, `WorldState` (optional).
+- **Depended-on-by:** Terminal REPL, future GUI.
+
+### `build_play_interface` factory
+- **Location:** `src/fable_table_engine/interface.py`
+- **Purpose:** Wires log/world/scene + model gateway instances into a ready-to-use `PlayInterface`. Constructs `CommitPipeline`, `DiceService`, `RulesEngine`, `ContextAssembler`, `BeatRunner`, and `PlaytestSession` from the provided components and model gateways. Accepts `sheets`, `roster`, and `campaign_id` optional parameters.
+- **Depends on:** All engine components; `AdjudicatorGM`, `NarratorGM`.
+- **Depended-on-by:** Application entry point; tests.
+
+### Channel router / interface *(design placeholder; superseded above for Phase 21)*
 - **Purpose:** Routes attributed events to the correct UI channels (public, whisper, OOC, dice) and per-character boxes; drives per-character TTS.
 - **Reads:** Events with audience/visibility; turn order from orchestrator.
 - **Writes:** UI render; TTS queue.
@@ -311,6 +334,32 @@ Layered configuration for model choices and optional integration keys. No settin
 - **Purpose:** GUI panel (within the play interface) that renders all essential settings with their current effective value, default placeholder, and a per-row Reset button. Displays the full file path for the active user-level and campaign-level settings files, with a button to open the file in the system editor (or copy-to-clipboard fallback). Character agent slot rows are generated dynamically from the campaign roster.
 - **API key display:** For voice and any other third-party API keys, the panel shows only the environment variable name and a "set / not set" status indicator. No text field accepts or displays the key value itself.
 - **Depended-on-by:** Play interface (settings panel sub-view).
+
+---
+
+## Context budget management *(Phase 22 deliverable; D-042)*
+
+Controls how much of each role's context window is used before a prompt is assembled. No component here holds game authority or writes to the event log. All budget enforcement happens at context-assembly time, before `ModelGateway` is called.
+
+### Context budget policy (`ContextBudgetPolicy`)
+- **Purpose:** Frozen dataclass specifying the budget constraints for one role: `max_tokens: int`, `event_window: int` (max recent events), `required_sections: list[str]` (section names that survive trimming), `summarize_older: bool`.
+- **Kind:** Frozen dataclass (data only; no I/O).
+- **Depends on:** Nothing.
+- **Depended-on-by:** `ContextBudgeter` (consumes one policy per role); `SettingsRegistry` (holds defaults for all six roles).
+
+### Token estimator (`TokenEstimator`)
+- **Purpose:** Wraps the `count_tokens` API call (Anthropic SDK). Returns an estimated token count for a given prompt string. Used by `ContextBudgeter` in hybrid mode (D-042): called only when a word-count proxy signals proximity to the per-role cap, not on every turn.
+- **Kind:** Thin service (stateless; one-shot API call).
+- **Depends on:** `ModelGateway` (or direct SDK call).
+- **Depended-on-by:** `ContextBudgeter`.
+
+### Context budgeter (`ContextBudgeter`)
+- **Purpose:** Applies per-role budget policy during context assembly. Given a belief-store projection and a `ContextBudgetPolicy`, it trims the event list to `event_window`, optionally calls `TokenEstimator` when near the cap, and ensures required sections survive. After trimming, runs a context quality check: emits `AuditFlag(tier=WARNING)` if required sections are missing or the assembled prompt still exceeds cap. Sits between belief-store projection and prompt-string construction — not between `ContextAssembler` and `ModelGateway`.
+- **Kind:** Service (stateless; pure transformation).
+- **Reads:** Belief store events list; `ContextBudgetPolicy` for the current role.
+- **Writes:** Returns a trimmed event list and a quality-check report.
+- **Depends on:** `ContextBudgetPolicy`, `TokenEstimator`, `Auditor` (for flag emission).
+- **Depended-on-by:** `ContextAssembler` (invoked per role before prompt assembly); `ModelGateway` is downstream and sees only the already-trimmed prompt.
 
 ---
 

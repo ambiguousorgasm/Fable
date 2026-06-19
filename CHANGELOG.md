@@ -4,6 +4,236 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — `build_play_interface()` full wiring (1221 tests)
+
+**`interface.py` factory wired** (`interface.py`, `tests/test_phase21_interface.py`):
+
+- `build_play_interface()` now accepts `executor`, `auditor`, `simulator`, `plot_manager`, `budgeter`, and `lore_assembler` as optional keyword arguments (all default to `None`).
+- `budgeter` and `lore_assembler` forwarded to `ContextAssembler(log, scene, budgeter=..., lore_assembler=...)`.
+- `executor`, `auditor`, `simulator`, `plot_manager`, `budgeter` forwarded to `BeatRunner(...)`.
+- Four new wiring tests in `TestBuildPlayInterface` cover: defaults still work, executor round-trip, budgeter round-trip, lore_assembler round-trip.
+- All previously-built subsystems (Phase 22 D-042 budgeter, D-043 lorebook, Phase 20 auditor, Phase 8 auditor, Phase 9 plot_manager, Phase 12 executor) are now reachable through the default app entry point.
+
+---
+
+## 2026-06-19 — Phase 22 item 4: D-043 lorebook v1 (1217 tests)
+
+**Phase 22 item 4 built** (`lorebook.py`, `campaign.py`, `context.py`, `settings.py`, `__init__.py`, `tests/test_phase22_lorebook.py`):
+
+- **`LoreEntry(entry_id, title, content, keywords, audience_class)`** — frozen dataclass; `audience_permits(pov, gm_entity)` enforces class gate (`"all"`, `"gm_only"`, `"player_{id}"`). `from_dict` / `to_dict` for campaign JSON round-trip.
+- **`LoreDeck(entries, gm_entity)`** — collection with `entries_for(pov)` audience filtering. `add()`, `all_entries`, `len`. `from_dicts(data, gm_entity)` deserializes campaign JSON.
+- **`LoreAssembler(deck, max_entries)`** — keyword matching against the POV's entitled belief projection only (event content + committed fact subject/predicate/value labels). Audience class gate fires before any keyword search — `gm_only` entries are never considered for non-GM POVs regardless of keyword match. `lore_context_block(entries)` formats matched entries into a prompt-ready background block.
+- **`ContextAssembler`** gains `lore_assembler: LoreAssembler | None = None` param and `lore_for(store, pov) -> list[LoreEntry]` — returns `[]` when disabled (opt-in). `lore_assembler` property exposed for callers.
+- **`CampaignPackage`** gains `lore_entries: list[dict]` field. `load_campaign_dict` parses and validates `lore_entries` (duplicate ID check, audience_class validation). `lore_deck(gm_entity)` factory creates a `LoreDeck` on demand (lazy import — campaign.py has no runtime lorebook dependency).
+- **`SettingsRegistry.DEFAULTS`** gains `"lorebook_injection_window": "5"` (19 total keys).
+- **Security invariant tests** — four tests in `TestLoreAudienceSecurity` cover: `gm_only` not injected into player context; `gm_only` visible to GM; player-scoped entry not visible to other players; audience gate fires before keyword match (D-043 constraint 4 — keyword in player corpus doesn't unlock a `gm_only` entry).
+- 45 new tests. D-043 resolved.
+
+---
+
+## 2026-06-19 — Phase 22 items 2 + 3: D-042 context budget management + cost ceiling (1172 tests)
+
+**Phase 22 items 2 & 3 built** (`budgeter.py`, `provider.py`, `settings.py`, `context.py`, `character_agent.py`, `beat.py`, `__init__.py`, `tests/test_phase22_budgeter.py`):
+
+- **`ContextBudgetPolicy(max_tokens, event_window, required_sections, summarize_older)`** — frozen dataclass; per-role configuration.
+- **`BudgetCheckResult(role, token_estimate, cap, fits)`** — frozen result with `over_by` property.
+- **`TokenEstimator(client=None)`** — hybrid estimator: `estimate(text)` uses char-count proxy (`len // 4`); `count(text, model, cap)` calls proxy first and triggers preflight `count_tokens` API only when the proxy is ≥ 80 % of cap. Exceptions fall back to proxy — call path never blocks on estimator failure.
+- **`ContextBudgeter(policies=None, estimator=None)`** — applies per-role budget policies at context-assembly time. `policy(role)`, `event_window(role)`, `trim_events(events, role)` (most-recent window slice), `check_sections(sections, role)` (missing required-section keys), `check_budget(text, role, model)` → `BudgetCheckResult`. `ContextBudgeter.from_settings(sm, campaign_id, estimator)` reads `{role}_max_tokens` and `{role}_event_window` from `SettingsManager`, falling back to code defaults on missing or non-integer values.
+- **Per-role defaults (D-042 table)**: `gm_adjudicator` 40K/20, `gm_narrator` 20K/8, `character_agent` 12K/12, `social_interpreter` 8K/6, `auditor` 16K/10, `plot_manager` 24K/15.
+- **`CostCeilingStatus(OK / WARNING / EXCEEDED)`** — string enum added to `provider.py`. `TelemetrySink` gains `cost_ceiling_usd` param, `total_cost_usd()`, and `ceiling_status()`: OK below 80 %, WARNING at/above 80 %, EXCEEDED at/above 100 %; advisory-only by default.
+- **`SettingsRegistry.DEFAULTS`** expanded with 12 per-role budget keys (`{role}_max_tokens`, `{role}_event_window` for the 6 named roles).
+- **`ContextAssembler`** gains optional `budgeter` param + `budgeter` property; belief-store projection remains complete (budgeter does not filter events — canon accuracy is unaffected).
+- **`CharacterAgent.propose(assembler, budgeter=None)`** — uses `budgeter.event_window("character_agent")` when a budgeter is supplied; falls back to assembler's own budgeter, then to `limit=12`.
+- **`BeatRunner`** gains optional `budgeter` param; uses `budgeter.event_window("gm_adjudicator")` / `"gm_narrator"` for `_events_summary` / `_narrator_context`; passes `budgeter` to `agent.propose()` in `run_with_agent` and `run_round`. Falls back to `CONTEXT_EVENT_WINDOW = 12` when no budgeter configured (backward compat).
+- `CONTEXT_EVENT_WINDOW` constant kept as legacy fallback; comment updated.
+- 57 new tests. D-042 resolved.
+
+---
+
+## 2026-06-19 — Phase 22 item 1: D-017 multi-model routing (1115 tests)
+
+**Phase 22 item 1 built** (`provider.py`, `gm.py`, `beat.py`, `__init__.py`, `tests/test_phase22_routing.py`; test fixes in `tests/test_phase5_gm.py`, `tests/test_phase20_social.py`):
+
+- **`ProviderAdapter` ABC** — formal abstraction over provider-specific APIs. Two abstract members: `name` (str property) and `call(role, model, **kwargs)`. Intentionally separate from fictional state; adapters must be stateless w.r.t. model calls.
+- **`AnthropicAdapter(ProviderAdapter)`** — wraps `anthropic.Anthropic`; forwards `call(role, model, **kwargs)` to `client.messages.create(model=model, **kwargs)`. `role` not forwarded to the SDK (logging/debug only).
+- **`ToolOutputError(Exception)`** — raised when a model API call succeeds but the response doesn't match the expected tool schema after all retries. Distinct from `ModelCallError` (network/timeout). Carries `role`, `attempts`, `reason`.
+- **`ModelGateway` per-role resolution** — `__init__` now accepts `ProviderAdapter | anthropic.Anthropic` (raw client auto-wrapped) and optional `SettingsManager`. `_resolve_model(role, kwargs)` checks settings first, then `model=` kwarg, then `SettingsRegistry.DEFAULTS`, then `_FALLBACK_MODEL`. `_ROLE_TO_SETTINGS_KEY` maps gateway roles to settings keys. The resolved model is always passed to the adapter; `model=` is popped from kwargs to avoid double-passing.
+- **`AdjudicatorGM` structured-output normalization** — `evaluate()` retries once on parse failure (`KeyError`, `TypeError`, `ValueError`, `RuntimeError`); raises `ToolOutputError("adjudicator", 2, reason)` after two failed parses. `_parse_response()` extracted as private method.
+- **`BeatRunner` ToolOutputError abort** — step 4 now catches both `ModelCallError` and `ToolOutputError`; produces an aborted `BeatResult` rather than propagating the exception.
+- **Test fixes** — `test_missing_tool_call_raises` updated to expect `ToolOutputError` (not `RuntimeError`). `_gateway_returning` helper in social tests fixed to use `ModelGateway.__init__` instead of `__new__` bypass (bypassing init left `_adapter` unset, causing silent `AttributeError` swallowed by `analyze_event`).
+- 30 new tests (`test_phase22_routing.py`). D-017 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 10: home screen + play interface (1085 tests)
+
+**Phase 21 deliverable 10 built** (`interface.py`, `world_state.py` bugfix, `__init__.py`, `tests/test_phase21_interface.py`):
+
+- **`HomeScreen(campaigns_dir, sessions_dir, settings_dir)`** — navigation state for the home screen. `available_campaigns()` loads campaign JSON files from disk (malformed files silently skipped). `available_sessions()` reads the `SessionManager` index. `render()` returns a formatted display string with numbered campaign/session lists and command hints. Pure navigation — does not create or resume sessions (model wiring is the caller's responsibility).
+- **`PlayInterface(session, settings, roster, campaign_id, world)`** — rendering and input layer over `PlaytestSession`. Accesses the event log exclusively via `PlaytestSession.player_view()` and `step()` — never `log.all()`. `submit(text)` → new entitled display lines; `history()` → full entitled history; `render_status()` → `scene:phase  beat:N  [label]`; `render_settings()` → settings panel string with file paths, essential keys (marking overrides `*`), and character-agent slot rows derived from the roster.
+- **`build_play_interface(log, world, scene, player_id, adjudicator, narrator, settings, roster, campaign_id, sheets)`** — factory that wires `CommitPipeline`, `DiceService`, `RulesEngine`, `ContextAssembler`, `BeatRunner`, `PlaytestSession` → `PlayInterface`.
+- **`WorldState.zone_of()` bugfix** — previously raised `KeyError` for entities not in the world (e.g., the GM entity when building a scene-aware context assembler); now returns `None`, matching the declared return type `str | None` and the `perceptible_entities()` guard that already expected this.
+- **Security tests** — three tests verify that GM-only events (`narration`, `scene_transition`, `audit_advisory` with `audience=("gm",)`) never appear in `PlayInterface.history()`.
+- 60 new tests; Phase 21 all 10 deliverables complete.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 9: D-041 settings system (1025 tests)
+
+**Phase 21 deliverable 9 built** (`settings.py`, `__init__.py`, `tests/test_phase21_settings.py`):
+
+- **`SettingsRegistry`** — code-level defaults for all six essential settings: `gm_adjudicator_model` (`claude-opus-4-8`), `gm_narrator_model` (`claude-opus-4-8`), `gm_world_simulator_model` (`claude-opus-4-8`), `auditor_model` (`claude-haiku-4-5-20251001`), `social_interpreter_model` (`claude-sonnet-4-6`), `character_agent_default_model` (`claude-opus-4-8`). `ESSENTIAL_KEYS` frozenset. System always valid with zero user configuration.
+- **`SettingsManager(settings_dir)`** — three-layer merge (code defaults → `settings/models.json` → `settings/campaigns/{campaign_id}.json`). `load_settings(campaign_id)`, `get(key, campaign_id)`, `set(key, value, scope)` (`"user"` or campaign_id), `reset_setting(key, scope)` (removes override, deletes empty file, reverts to next layer).
+- **Character agent slots** — `character_model(entity_id, campaign_id)` resolves `character_agent_{entity_id}_model`, falls through to `character_agent_default_model`. `character_slots(roster, campaign_id)` returns `{entity_id: model}` for a full roster.
+- **API key policy** — settings files store env-var names only (e.g., `"voice_api_key_env": "ELEVENLABS_API_KEY"`); never actual key values.
+- **Module-level functions** — `load_settings(settings_dir, campaign_id)` and `reset_setting(key, scope, settings_dir)` for one-shot use without a manager instance.
+- 58 new tests. D-041 resolved.
+
+---
+
+## 2026-06-19 — Phase 22 planning: SillyTavern-inspired features review
+
+Design review of SillyTavern-inspired features against FABLE authority hierarchy. Outcome: "borrow the affordances, not the architecture." Changes to design files only — no code changes.
+
+- **D-017 updated**: Phase 22 multi-model routing is now explicitly **must-ship first**, not a medium-priority refactor. Without per-role routing, settings model slots are cosmetic and budget policies cannot be calibrated against realistic per-role costs.
+- **D-038 updated**: Portrait generation policy decided (was an open question) — generate once per character at creation/first-render, store artifact, never auto-regenerate per scene or session. Model consistency testing still required before locking a model recommendation.
+- **D-043 opened**: Lorebook/world-info injection architecture and audience-gate mechanism. Decided constraints: entries are background only; audience class annotated at authoring; injection inside `ContextAssembler` keyed to POV's entitled projection only; never keyword-triggered from raw event content; D-042 (context budgeter) is a hard prerequisite. Recommendation: keyword match against POV belief projection (option A) for Phase 22 v1.
+- **IMPLEMENTATION_PLAN.md Phase 22 revised**: explicit priority order added — (1) multi-model routing, (2) context budgeting + cost ceiling, (3) lorebook v1 with D-042 dependency noted, (4) prompt/style profiles, (5) reliability hardening items. Settings panel shell removed from Phase 21 concern — the existing D-041 settings system already has real content; the routing behavior that makes the model slots non-cosmetic comes in Phase 22.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 8: D-030 time anchor and scene transition (967 tests)
+
+**Phase 21 deliverable 8 built** (`world_state.py`, `gm.py`, `beat.py`, `persistence.py`, `__init__.py`, `tests/test_phase21_time_anchor.py`):
+
+- **`ELAPSED_CATEGORIES = frozenset({"beat","exchange","scene","travel","breather","downtime"})`** — added to `world_state.py` and exported from package. Maps to D-026 clock `trigger_types` so a scene transition with `elapsed_category="breather"` advances only breather-triggered clocks.
+- **Time anchor fields on `WorldState`**: `scene_id` (UUID, fresh per-instance default), `beat_index` (0), `scene_phase` ("quiet"), `prose_time_label` (None), `elapsed_category` ("beat"). Backend-owned; client reads from event stream only.
+- **`WorldState.advance_beat(elapsed_category="beat")`** — increments `beat_index`, records `elapsed_category`. Validates against `ELAPSED_CATEGORIES`. Called by `BeatRunner.run()` inside the transaction on every successful beat so it rolls back on abort.
+- **`WorldState.begin_scene_transition(scene_phase, elapsed_category, prose_time_label)`** — generates fresh UUID `scene_id`, resets `beat_index` to 0, updates phase and label. Returns the new `scene_id`.
+- **`WorldSimulator.declare_scene_transition()`** — calls `begin_scene_transition()` on world, then emits a `scene_transition` structural event (`channel="system"`, `audience=(gm,)`) with JSON payload containing `scene_id`, `scene_phase`, `elapsed_category`, and optional `prose_time_label`. Returns the new `scene_id`. Players never see this event.
+- **`BeatRunner.run()`** — calls `self._world.advance_beat()` inside the transaction block after clock advance, so `beat_index` is atomic with the rest of the beat.
+- **Persistence** — `SQLiteWorldState._save()` / `_load()` include all five time anchor fields. `_load()` when no row exists calls `_save()` immediately so the generated `scene_id` is persisted and a subsequent open sees the same id. Schema version bumped to `"21.3"`.
+- 47 new tests; D-030 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 7: D-028 knowledge transfer enforcement (920 tests)
+
+**Phase 21 deliverable 7 built** (`events.py`, `__init__.py`, `tests/test_phase21_knowledge_transfer.py`):
+
+- **`TRANSFER_TYPES = frozenset({"share_briefing", "object_shown"})`** — added to `events.py` and exported from package. These are the two deliberate knowledge-transfer event types: `share_briefing` (explicit verbal briefing — "Mira tells the group what she saw") and `object_shown` (a physical object or document shown to specific parties).
+- **No-`fact` invariant enforced at event construction** — `Event.__post_init__` rejects any `share_briefing` or `object_shown` event that carries a `"fact"` commitment. Error message cites D-028. `"claim"`, `"observation"`, and `"theory"` commitments are permitted. The rule: from the receiver's perspective, transferred knowledge is always a claim from the sharing entity; independent engine evidence is required to promote it to `"fact"`.
+- **Belief store integration verified** — tests confirm that transferred claims land in `BeliefStore.claims`, never in `beliefs` (facts dict); `believes()` and `value_of()` remain false/None for keys known only via transfer; `claims_about()` finds the claim with its `asserting_entity` provenance intact.
+- 26 new tests covering: constant shape, event validation (accept/reject matrix), round-trip through `EventLog.append()`, belief-store projection for hero/gm/non-audience, and fact+claim coexistence test proving the client cannot auto-promote a briefing into a confirmed fact. D-028 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 6: D-032 epistemic certainty labels (894 tests)
+
+**Phase 21 deliverable 6 built** (`events.py`, `context.py`, `console.py`, `__init__.py`, `tests/test_phase21_epistemic_labels.py`):
+
+- **`"theory"` added to `EPISTEMIC_TYPES`** in `events.py`. Character inferences and explicit suspicions can now be committed with this type. Not promoted to `"fact"` without engine evidence.
+- **`EPISTEMIC_LABELS` dict** in `console.py`: `fact→"Confirmed"`, `claim→"Claimed"`, `observation→"Observed"`, `theory→"Suspected"`. Backend-emitted; client never computes from prose or inference.
+- **`epistemic_label(type, *, superseded=False)`** — public helper; returns `"Corrected/Superseded"` when `superseded=True` (D-031 takes precedence), `"Unknown"` for unrecognized types (reserved for GM Case File template slots). Exported from package.
+- **`_commitment_labels(event)`** — formats all commitments on a `ProjectedEvent` as bracketed label strings; returns `""` when there are no commitments.
+- **`render_event()` updated** — every rendered branch appends `_commitment_labels(event)` so the player sees e.g. `The door was red. [Confirmed: door.colour=red]`.
+- **`BeliefStore.theories: tuple[Belief, ...]`** — new field in `context.py`. Mirrors `claims` and `observations` for the `"theory"` epistemic type.
+- **`_fold_epistemic()`** now returns a 4-tuple `(facts, claims, obs_list, theories)`. `beliefs_from()` and `belief_store()` updated accordingly. `"theory"` commitments enter `theories` and never enter the facts dict.
+- 36 new tests; D-032 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 5: D-031 correction and retcon events (858 tests)
+
+**Phase 21 deliverable 5 built** (`events.py`, `event_log.py`, `console.py`, `persistence.py`, `__init__.py`, `tests/test_phase21_correction.py`):
+
+- **`CORRECTION_TYPES = frozenset({"correction", "retcon"})`** — added to `events.py` and exported from package. Both types are plain logged events; the log remains append-only.
+- **`Event.authorized_by: tuple[str, ...]`** — new field; default empty. `__post_init__` enforces non-empty for `retcon` type (D-031 backstop: retcon requires human player in `authorized_by`). Included in `to_dict()`.
+- **`ProjectedEvent.superseded_by: str | None`** — computed in `project_for()` by scanning for correction/retcon events whose `derived_from` lists reference the original; set to the corrector's event ID. `None` for uncorrected events and for the correction events themselves.
+- **`render_event()` updated**: `correction` → `"[correction] {content}"`; `retcon` → `"[retcon] {content}"`; any event with `superseded_by` set gets `"[superseded] "` prefix. Original events are never omitted from the transcript.
+- **`authorized_by` threaded** through `EventLog.append()` and `SQLiteEventLog.append()`. Persistence schema gains `authorized_by TEXT NOT NULL DEFAULT '[]'`; `ENGINE_SCHEMA_VERSION` bumped to `"21.2"`.
+- 24 new tests; D-031 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 4: D-029 roll visibility (834 tests)
+
+**Phase 21 deliverable 4 built** (`events.py`, `event_log.py`, `dice.py`, `rules.py`, `beat.py`, `console.py`, `persistence.py`, `__init__.py`, `tests/test_phase21_roll_visibility.py`):
+
+- **`ROLL_VISIBILITY_LEVELS`** frozenset — `{"table", "roller_only", "gm_only", "revealed"}` — added to `events.py` and exported from package.
+- **`Event.roll_visibility: str | None`** new field; validated in `__post_init__`; included in `to_dict()`. Default `None` for all non-dice events.
+- **`ProjectedEvent.roll_visibility: str | None`** — threaded from `Event` through `project_for()` so `render_event()` and any display layer can read the value without re-deriving it from audience membership.
+- **`EventLog.append()` / `SQLiteEventLog.append()`** — both accept `roll_visibility` kwarg.
+- **`DiceService.roll()`** — `roll_visibility="table"` param; validates value; stores on event.
+- **`RulesEngine.resolve_check()`** — `roll_visibility="table"` param; tags both the `dice_roll` and `resolution` events with the same value.
+- **`_narrator_context()`** in `beat.py` — filters `roll_visibility == "gm_only"` events from narrator input (D-007 cold/warm split enforcement).
+- **`render_event()`** in `console.py` — explicit guard: `gm_only` dice events return `None` even if they somehow reach a player projection. `roller_only` and `revealed` render normally.
+- **Persistence**: `events` table gains `roll_visibility TEXT` (nullable) column; `ENGINE_SCHEMA_VERSION` bumped to `"21.1"`.
+- Audience-based enforcement is primary: `gm_only` rolls use `audience=(gm,)` so they never appear in player projections. `roll_visibility` tag is a secondary safety net + audit label.
+- 29 new tests; D-029 resolved.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 3: D-027 action lifecycle state machine (805 tests)
+
+**Phase 21 deliverable 3 built** (`beat.py`, `console.py`, `__init__.py`, `tests/test_phase21_lifecycle.py`):
+
+- **`ActionLifecycleState(str, Enum)`** — 13 states: `SUBMITTED → VALIDATING → ADJUDICATING → PENDING_PLAYER_CHOICE → ROLLING → PENDING_EDGE_DECISION → APPLYING_EFFECTS → NARRATING → AUDITING → COMMITTED`; exits `CANCELLED / ABORTED / FAILED`. `str` mixin so values pass as event content strings without `.value`.
+- **`BeatRunner._emit_lifecycle(state, audience)`** — single emission point; emits `type="action_lifecycle"` event with no content side-effects.
+- **`BeatResult.lifecycle_state`** — new field, defaults to `COMMITTED`; every return path now carries the correct terminal state.
+- **Audience policy enforced**: internal processing states (`VALIDATING`, `ADJUDICATING`, `APPLYING_EFFECTS`, `NARRATING`, `AUDITING`) → `(gm,)` only; interactive pause states (`PENDING_PLAYER_CHOICE`, `PENDING_EDGE_DECISION`) → `(actor, gm)`; terminal states (`SUBMITTED`, `COMMITTED`, `ABORTED`, `FAILED`) → `scope.audience` (all present).
+- **OOC path**: emits `SUBMITTED → COMMITTED`; skips all intermediate steps.
+- **`ModelCallError` handling**: targeted `try/except` around adjudicator call (outside transaction); `except ModelCallError` added to existing `try: with transaction()` block for narrator failures (transaction rollback happens before catch). Both paths emit `FAILED` to all-present and return `beat_aborted=True`.
+- **`render_event`** in `console.py` returns `None` for `action_lifecycle` events — clients use them as state metadata, not chat lines.
+- **`ActionLifecycleState` exported** from `fable_table_engine.__init__`.
+- 30 new tests in `tests/test_phase21_lifecycle.py`; D-027 resolved.
+
+---
+
+## 2026-06-19 — D-042 opened: context budget management; CONTEXT_EVENT_WINDOW named constant
+
+**Design work (no new tests):**
+
+- **D-042 opened** in `DECISIONS.md` — context budget management architecture. Key decisions recorded: `ContextBudgeter` belongs at context-assembly time (not gateway boundary); hybrid preflight estimation (D-042 option C); per-role `ContextBudgetPolicy` table (six roles with token caps and event windows); context quality check advisory via `AuditFlag(WARNING)`; per-session cost ceiling in `TelemetrySink`. Implementation target: Phase 22.
+- **`ContextBudgeter`, `ContextBudgetPolicy`, `TokenEstimator`** added to `COMPONENTS.md` as Phase 22 deliverables.
+- **Phase 22 implementation plan expanded** in `IMPLEMENTATION_PLAN.md` — four new items: context budget management, per-session cost ceiling, `CONTEXT_EVENT_WINDOW` → settings-driven promotion.
+- **`CONTEXT_EVENT_WINDOW = 12`** added as a module-level named constant in `beat.py` (replaces the two `limit: int = 12` inline defaults in `_events_summary` and `_narrator_context`). This is a Phase 21 placeholder; Phase 22 replaces it with per-role `ContextBudgetPolicy` entries loaded from `SettingsManager`.
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 2: Edge mechanic — Lean / Push / Shield (775 tests)
+
+**Phase 21 deliverable 2 built** (`beat.py`, `character_agent.py`, `tests/test_phase21_edge.py`):
+
+- `_step_band_up(band)` — pure helper: steps a band up one level, clamps at Triumph (v6 §13).
+- `Proposal` gains `edge_spend`, `edge_justification`, `edge_shield_target` fields.
+- `BeatResult` gains `edge_spend`, `edge_spent`, `edge_step_applied` fields.
+- `BeatRunner.run()` gains `edge_spend`, `edge_justification`, `edge_shield_target`, `_shield_registry` params.
+  - **Step 4c (pre-roll Lean):** before roll, if `edge_spend="lean_before"` + executor + stakes + exposure > 0: spend 1 Edge, reduce `effective_exposure` by 1. Outside transaction (mechanical fact, persists on abort per D-035 philosophy).
+  - **Step 5b (post-roll step-up):** after roll, if `lean_after` (+ non-empty justification) or `push` (+ 2-Stress headroom) and band ≠ Triumph: spend Edge (Push also costs 2 Stress), step `effective_band` up one level. Outside transaction.
+  - **Step 6b additions:** palette selection uses `effective_band` (not raw `resolution.band`); Shield redirect: Harm (ApplyStress/ApplyScar) targeting a shielded entity is redirected to the shielder with 1 Edge spend from the shielder (inside transaction); GainEdge filtered from `triumph_effects` when `edge_step_applied` (v6 §13: "a band reached by spending Edge generates no Edge").
+  - Narrator receives `effective_band` (stepped band visible to narrator).
+- `run_with_agent()` passes edge fields from `Proposal` to `run()`.
+- `run_round()` pre-collects all proposals before the round begins, builds `shield_registry: {shielded_id: shielder_id}` from Shield declarations, passes registry to each `run()` call. ValueError raised at pre-collection stage (not lazily during the round).
+- 28 new tests: `_step_band_up` (4), Lean-before (5), Lean-after (6), Push (6), invariants (3), Shield (4).
+
+---
+
+## 2026-06-19 — Phase 21 deliverable 1: schema version guard + session manager (747 tests)
+
+**Phase 21 deliverable 1 built** (`persistence.py`, `tests/test_phase21_session.py`):
+
+- `ENGINE_SCHEMA_VERSION = "21"` — bump this constant when a DB migration is needed; Phase 22 adds the migration registry.
+- `SchemaVersionError` — raised by `open_session()` and `SessionManager.resume()` on version mismatch; fail-closed.
+- `open_session()` updated: writes `schema_version` row on first open; validates and raises `SchemaVersionError` on mismatch.
+- `SessionManifest` — frozen dataclass (10 fields: `session_id`, `campaign_id`, `title`, `created_at`, `updated_at`, `last_scene_summary`, `player_summary`, `db_path`, `schema_version`, `engine_version`); `to_dict`/`from_dict` round-trip.
+- `SessionManager` — creates sessions (UUID, DB at `sessions_dir/{session_id}.db`, index at `sessions_dir/index.json`), lists sessions (ordered by `updated_at` descending), resumes sessions (schema guard via `open_session`), updates manifest fields.
+- 22 new tests cover: fresh DB write, resume matching/mismatching version, frozen manifest, round-trip, optional defaults, create/list/resume/update_manifest lifecycle, events surviving resume, wrong schema on resume, unknown session_id.
+- `__init__.py` exports: `ENGINE_SCHEMA_VERSION`, `SchemaVersionError`, `SessionManifest`, `SessionManager`.
+- `IMPLEMENTATION_PLAN.md` Phase 21 deliverables list updated to explicit dependency order (10 items).
+
+---
+
 ## 2026-06-19 — Settings system design locked (D-041)
 
 **No code changes.** Design and planning documents only.
