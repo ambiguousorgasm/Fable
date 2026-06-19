@@ -4,6 +4,21 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Phase 22: save-format migration registry + event schema fix (1256 tests)
+
+**Migration registry** (`persistence.py`):
+- `ENGINE_SCHEMA_VERSION` bumped `"21.3"` → `"22.0"`.
+- `_MIGRATION_REGISTRY` dict: each entry maps `from_version → (to_version, description, sql_statements)`. `open_session()` walks the chain automatically; `SchemaVersionError` only fires when no path exists (unknown/future version).
+- `_apply_migrations(conn, stored)` applies DDL in hop order, commits after each step. Bootstrap entry `"21.3" → "22.0"` migrates all Phase 21 sessions transparently on next open (no DDL changes needed).
+- 8 migration tests: registry structure, walk termination, 21.3 auto-migration, unknown version still raises, synthetic DDL applied in order.
+
+**`event.schema.json` updated to Phase 22 surface** (was stale since before Phase 11):
+- `Event`: added `roll_visibility` (D-029, enum), `authorized_by` (D-031, array). Made `commitments` and `derived_from` optional with defaults.
+- `Commitment`: added `epistemic_type` (D-024, enum: `fact`/`claim`/`observation`/`expired`/`theory`; default `"fact"`), `asserting_entity` (nullable), `observing_entity` (nullable). All new fields documented.
+- Schema drift note in STATUS.md is resolved.
+
+---
+
 ## 2026-06-19 — Phase 22: lorebook prompt injection + cost-ceiling surface (1248 tests)
 
 **Lorebook injected into all three prompt paths** (`context.py`, `gm.py`, `character_agent.py`, `beat.py`):
