@@ -41,6 +41,7 @@ from fable_table_engine import (
     SessionManager,
     open_session,
 )
+from fable_table_engine.persistence import _MIGRATION_REGISTRY, _apply_migrations
 
 
 # --------------------------------------------------------------------------- #
@@ -88,6 +89,113 @@ class TestSchemaVersionGuard:
         conn.close()
         with pytest.raises(SchemaVersionError, match="'0'"):
             open_session(db)
+
+
+# --------------------------------------------------------------------------- #
+# Migration registry (Phase 22)                                                 #
+# --------------------------------------------------------------------------- #
+
+class TestMigrationRegistry:
+
+    def test_registry_is_not_empty(self):
+        assert len(_MIGRATION_REGISTRY) >= 1
+
+    def test_all_targets_reachable_from_origin(self):
+        """Every registry entry's to_version is ENGINE_SCHEMA_VERSION or another from_version."""
+        all_from = set(_MIGRATION_REGISTRY.keys())
+        all_to = {v[0] for v in _MIGRATION_REGISTRY.values()}
+        # Every to_version except ENGINE_SCHEMA_VERSION must be a from_version
+        orphans = all_to - {ENGINE_SCHEMA_VERSION} - all_from
+        assert orphans == set(), f"Orphaned to_versions (not in registry): {orphans}"
+
+    def test_walking_to_current_terminates(self):
+        """Walking the registry from any known start version reaches ENGINE_SCHEMA_VERSION."""
+        for start in _MIGRATION_REGISTRY:
+            current = start
+            seen: set[str] = set()
+            while current != ENGINE_SCHEMA_VERSION:
+                assert current not in seen, f"Cycle detected at {current!r}"
+                seen.add(current)
+                step = _MIGRATION_REGISTRY.get(current)
+                assert step is not None, f"No path from {current!r}"
+                current = step[0]
+
+    def test_21_3_migrates_to_current(self, tmp_path):
+        """A DB stamped 21.3 is auto-migrated to ENGINE_SCHEMA_VERSION by open_session."""
+        db = tmp_path / "old.db"
+        # Create a valid DB at current version, then rewind to 21.3.
+        log, _, _ = open_session(db)
+        log.close()
+        conn = sqlite3.connect(str(db))
+        conn.execute("UPDATE schema_version SET version = '21.3'")
+        conn.commit()
+        conn.close()
+        # open_session should migrate, not raise.
+        log2, _, _ = open_session(db)
+        log2.close()
+        # Confirm the stored version is now current.
+        conn2 = sqlite3.connect(str(db))
+        row = conn2.execute("SELECT version FROM schema_version").fetchone()
+        conn2.close()
+        assert row[0] == ENGINE_SCHEMA_VERSION
+
+    def test_unknown_version_still_raises_schema_version_error(self, tmp_path):
+        db = tmp_path / "future.db"
+        log, _, _ = open_session(db)
+        log.close()
+        conn = sqlite3.connect(str(db))
+        conn.execute("UPDATE schema_version SET version = '999.0'")
+        conn.commit()
+        conn.close()
+        with pytest.raises(SchemaVersionError, match="999.0"):
+            open_session(db)
+
+    def test_apply_migrations_noop_on_current_version(self, tmp_path):
+        """_apply_migrations is a no-op when stored == ENGINE_SCHEMA_VERSION."""
+        db = tmp_path / "current.db"
+        conn = sqlite3.connect(str(db))
+        conn.execute("CREATE TABLE schema_version (version TEXT NOT NULL)")
+        conn.execute("INSERT INTO schema_version VALUES (?)", (ENGINE_SCHEMA_VERSION,))
+        conn.commit()
+        # Should not raise (while loop exits immediately).
+        _apply_migrations(conn, ENGINE_SCHEMA_VERSION)
+        conn.close()
+
+    def test_apply_migrations_raises_on_no_path(self, tmp_path):
+        db = tmp_path / "nope.db"
+        conn = sqlite3.connect(str(db))
+        conn.execute("CREATE TABLE schema_version (version TEXT NOT NULL)")
+        conn.execute("INSERT INTO schema_version VALUES ('999.0')")
+        conn.commit()
+        with pytest.raises(SchemaVersionError):
+            _apply_migrations(conn, "999.0")
+        conn.close()
+
+    def test_migration_sql_applied_in_order(self):
+        """A synthetic migration with DDL is applied before the version is bumped."""
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE schema_version (version TEXT NOT NULL)")
+        conn.execute("INSERT INTO schema_version VALUES ('test.0')")
+        conn.commit()
+
+        # Synthetic migration: test.0 → ENGINE_SCHEMA_VERSION (terminates the walk).
+        _MIGRATION_REGISTRY["test.0"] = (
+            ENGINE_SCHEMA_VERSION,
+            "synthetic test migration",
+            ["CREATE TABLE _migration_marker (id INTEGER)"],
+        )
+        try:
+            _apply_migrations(conn, "test.0")
+            # DDL ran.
+            row = conn.execute("SELECT name FROM sqlite_master WHERE name='_migration_marker'").fetchone()
+            assert row is not None
+            # Version bumped to current.
+            ver = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            assert ver == ENGINE_SCHEMA_VERSION
+        finally:
+            del _MIGRATION_REGISTRY["test.0"]
+        conn.close()
 
 
 # --------------------------------------------------------------------------- #

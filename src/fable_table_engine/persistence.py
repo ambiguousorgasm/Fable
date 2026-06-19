@@ -42,14 +42,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ENGINE_SCHEMA_VERSION = "21.3"
+ENGINE_SCHEMA_VERSION = "22.0"
 
 
 class SchemaVersionError(RuntimeError):
-    """Raised when a session DB's schema_version does not match ENGINE_SCHEMA_VERSION.
+    """Raised when a session DB has no migration path to ENGINE_SCHEMA_VERSION.
 
-    Fail-closed: callers must not proceed with the session. Phase 22 adds a
-    migration registry; Phase 21 only guards and rejects.
+    Fail-closed: callers must not proceed with the session. open_session()
+    applies migrations automatically when a path exists in _MIGRATION_REGISTRY.
+    Raise only when the registry has no entry for the stored version.
     """
 
 from .event_log import EventLog
@@ -58,6 +59,53 @@ from .perception import Scene
 from .disposition import DispositionDelta, DispositionGraph
 from .plot_graph import Faction, FixtureBinding, Front, FunctionNode, Hook, PlotGraph
 from .world_state import Entity, WorldState
+
+
+# --------------------------------------------------------------------------- #
+# Migration registry                                                            #
+# --------------------------------------------------------------------------- #
+#
+# Each entry maps from_version -> (to_version, description, [sql_statements]).
+# open_session() walks this dict from the stored version to ENGINE_SCHEMA_VERSION.
+# Add an entry here whenever a DDL change is made:
+#   - ALTER TABLE events ADD COLUMN ...
+#   - CREATE TABLE ...
+#   - Any other schema-altering statement
+# A pure code change with no DDL change needs only a version bump and an empty
+# sql_statements list (like the 21.3 → 22.0 bootstrap entry below).
+
+_MIGRATION_REGISTRY: dict[str, tuple[str, str, list[str]]] = {
+    # from_version: (to_version, description, sql_statements)
+    "21.3": (
+        "22.0",
+        "Phase 22.0: migration registry bootstrap; no DDL changes",
+        [],
+    ),
+}
+
+
+def _apply_migrations(conn: "sqlite3.Connection", stored: str) -> None:
+    """Walk _MIGRATION_REGISTRY from stored to ENGINE_SCHEMA_VERSION.
+
+    Applies each migration's SQL statements in order and commits after each
+    step. Raises SchemaVersionError when no path exists — caller must close
+    the connection before propagating.
+    """
+    current = stored
+    while current != ENGINE_SCHEMA_VERSION:
+        step = _MIGRATION_REGISTRY.get(current)
+        if step is None:
+            raise SchemaVersionError(
+                f"No migration path from schema version {current!r} to "
+                f"{ENGINE_SCHEMA_VERSION!r}. Restore the session from a backup "
+                f"or create a new session with the current engine."
+            )
+        target, _description, sql_statements = step
+        for stmt in sql_statements:
+            conn.execute(stmt)
+        conn.execute("UPDATE schema_version SET version = ?", (target,))
+        conn.commit()
+        current = target
 
 
 # --------------------------------------------------------------------------- #
@@ -800,10 +848,12 @@ def open_session(
     exactly as you would the in-memory variants. Call ``log.close()`` when the
     session ends.
 
-    Phase 21 — schema version guard: on a fresh DB the current
-    ENGINE_SCHEMA_VERSION is written. On a resumed DB the stored version must
-    match; a mismatch raises SchemaVersionError (fail-closed). Phase 22 adds
-    migration; Phase 21 only guards and rejects.
+    Phase 22 — schema version guard + auto-migration: on a fresh DB
+    ENGINE_SCHEMA_VERSION is written. On a resumed DB the engine walks
+    _MIGRATION_REGISTRY from the stored version to the current one, applying
+    any DDL statements along the way. Raises SchemaVersionError only when no
+    migration path exists (e.g. version from future engine, or pre-registry DB
+    with an unknown version string).
 
     BeatRunner wraps each beat in ``log.transaction()`` automatically. Manual use::
 
@@ -815,7 +865,7 @@ def open_session(
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
 
-    # Schema version guard (Phase 21).
+    # Schema version guard + auto-migration (Phase 22).
     conn.execute(_CREATE_SCHEMA_VERSION)
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
@@ -823,11 +873,11 @@ def open_session(
         conn.commit()
     elif row[0] != ENGINE_SCHEMA_VERSION:
         stored = row[0]
-        conn.close()
-        raise SchemaVersionError(
-            f"Session DB schema version {stored!r} does not match engine "
-            f"{ENGINE_SCHEMA_VERSION!r}. Phase 22 migration required."
-        )
+        try:
+            _apply_migrations(conn, stored)
+        except SchemaVersionError:
+            conn.close()
+            raise
 
     tx_active: list[bool] = [False]
     log = SQLiteEventLog(conn, _tx_active=tx_active)

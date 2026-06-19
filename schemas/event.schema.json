@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fable-table-engine.local/schemas/event.schema.json",
   "title": "FABLE Event",
+  "description": "Append-only event log entry. See CORE §6 (access model) and events.py.",
   "type": "object",
   "required": [
     "id",
@@ -12,98 +13,72 @@
     "audience",
     "visibility",
     "type",
-    "content",
-    "commitments",
-    "derived_from"
+    "content"
   ],
   "properties": {
-    "id": {
-      "type": "string"
-    },
-    "sequence": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "timestamp": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "author": {
-      "type": "string"
-    },
+    "id": { "type": "string" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "author": { "type": "string" },
     "channel": {
       "type": "string",
-      "enum": [
-        "public",
-        "whisper",
-        "ooc",
-        "dice",
-        "system"
-      ]
+      "enum": ["public", "whisper", "ooc", "dice", "system"]
     },
     "audience": {
       "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "items": { "type": "string" },
       "uniqueItems": true
     },
     "visibility": {
       "oneOf": [
         {
           "type": "string",
-          "enum": [
-            "content",
-            "metadata"
-          ]
+          "enum": ["content", "metadata"]
         },
         {
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": [
-              "content",
-              "metadata"
-            ]
+            "enum": ["content", "metadata"]
           }
         }
       ]
     },
-    "type": {
-      "type": "string"
-    },
-    "content": {
-      "type": "string"
-    },
+    "type": { "type": "string" },
+    "content": { "type": "string" },
     "commitments": {
       "type": "array",
-      "items": {
-        "$ref": "#/$defs/commitment"
-      }
+      "items": { "$ref": "#/$defs/commitment" },
+      "default": []
     },
     "derived_from": {
       "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "uniqueItems": true
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "default": []
+    },
+    "roll_visibility": {
+      "type": ["string", "null"],
+      "enum": ["table", "roller_only", "gm_only", "revealed", null],
+      "default": null,
+      "description": "Who sees the raw dice values (D-029). null = not a roll event."
+    },
+    "authorized_by": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "default": [],
+      "description": "Entity IDs that authorized a retcon event (D-031). Required non-empty for type='retcon'."
     }
   },
+  "additionalProperties": false,
   "$defs": {
     "commitment": {
       "type": "object",
-      "required": [
-        "subject",
-        "predicate",
-        "value"
-      ],
+      "required": ["subject", "predicate", "value"],
       "properties": {
-        "subject": {
-          "type": "string"
-        },
-        "predicate": {
-          "type": "string"
-        },
+        "subject": { "type": "string" },
+        "predicate": { "type": "string" },
         "value": {},
         "confidence": {
           "type": "number",
@@ -113,10 +88,25 @@
         "revealed": {
           "type": "boolean",
           "default": false
+        },
+        "epistemic_type": {
+          "type": "string",
+          "enum": ["fact", "claim", "observation", "expired", "theory"],
+          "default": "fact",
+          "description": "Knowledge category (D-024). 'fact' = authoritative; 'claim' = asserted but unverified; 'observation' = perceived; 'expired' = tombstone; 'theory' = speculative."
+        },
+        "asserting_entity": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "For claims: the entity that asserted this belief (D-024)."
+        },
+        "observing_entity": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "For observations: the POV entity that perceived this (D-024)."
         }
       },
       "additionalProperties": true
     }
-  },
-  "additionalProperties": false
+  }
 }
