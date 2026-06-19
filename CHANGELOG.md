@@ -4,6 +4,23 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Phase 22: golden transcript suite (1309 tests)
+
+**`tests/test_phase22_golden.py`** — 53 end-to-end regression tests exercising the full deterministic stack with mocked models and seeded dice:
+
+- **Stakeless beat (14 tests)**: event type sequence (submitted→validating→adjudicating→applying_effects→narrating→narration→committed), player's projected events vs GM's projected events, narration text in player store, beat_index increment.
+- **Stakes beat with dice (10 tests)**: dice_roll and resolution events present, `had_stakes` true, band is a valid `Band` enum member, `rolling` lifecycle fires, effect event lands on Cost outcome (seed 7), stress increments to 1.
+- **Fact commits (5 tests)**: `declared_facts` visible in both player and GM belief stores, multiple facts all committed, two-beat accumulation of distinct (subject, predicate) pairs.
+- **Effect application (5 tests)**: `apply_stress` lands on Cost band (seed 0), effect event in log, audience covers actor + gm, stress overflow without `overflow_scar_type` rejected (stress stays at STRESS_CAP).
+- **Audience separation (4 tests)**: GM-internal lifecycle events absent from player store, player store events cross-referenced against raw log to confirm audience, dice roll visible to actor, GM sees more events than player.
+- **OOC bypass (5 tests)**: `ooc` event emitted, no narration, no dice roll, channel="ooc" in result, only submitted + committed lifecycle.
+- **Multi-beat sequence (5 tests)**: two narrations accumulate, beat counter increments, facts from two beats both visible, stress accumulates across two Cost beats (seed 1).
+- **SQLite round-trip (2 tests)**: events survive close/reopen, beat_index persists.
+
+Key design lessons encoded: committed facts are immutable (canon conflict prevents reuse of same subject/predicate), `ProjectedEvent` does not expose audience (use `log.all()` cross-reference), `consequence_palette["success"]` has no slot (no palette fires on Success band), `overflow_scar_type` required for scar-route overflow.
+
+---
+
 ## 2026-06-19 — Phase 22: save-format migration registry + event schema fix (1256 tests)
 
 **Migration registry** (`persistence.py`):
