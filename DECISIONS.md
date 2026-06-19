@@ -789,3 +789,74 @@ attach_campaign() / open_session() as normal
 **Risk:** If Openings later need game-mechanical coupling beyond expire/lapse (e.g. spending an Opening grants a Ledger step), a separate entity may prove cleaner. Revisit at Phase 17 if mechanical coupling is needed.
 **Relates to:** `effects.py` (`CreateMaintainedTruth`), `world_state.py` (`MaintainedTruth`), Phase 17 (campaign schema), Phase 21 (Scene tab projection).
 **Impact:** `MaintainedTruth` schema (`group`, `effect_text` fields), `CreateMaintainedTruth` effect (same optional fields), `WorldState.set_maintained_truth`, persistence layer, Scene tab Opening projection.
+
+---
+
+## D-044 · TN table enforcement: deterministic lookup vs. adjudicator-asserted · Open · 2026-06-19
+
+**Question:** FABLE v6 §6 specifies a fixed TN table (base 8, routine 10, demanding 12, extreme 13, heroic 14; contested = 10+Skill). Currently the adjudicator LLM asserts a TN value in its tool call and the rules engine accepts it without validation. Should `RulesEngine` enforce the legal TN set independently of the model?
+
+**Why it matters:** The determinism boundary (CORE §1, principle 1) says "Dice, rules, and world state are code-owned." TN is a rule, so the rules engine — not the model — should be authoritative. A model that hallucinates TN=7 currently produces a valid roll result. If TN is code-enforced, the model's output is validated and any out-of-set value triggers an audit flag rather than silently producing an incorrect resolution.
+
+**Options:**
+- **(A) Enforce in RulesEngine:** Add `LEGAL_TNS = {8, 10, 12, 13, 14}` and a contested formula to `rules.py`. `AdjudicatorGM.evaluate()` returns a `ResolutionPlan.tn`; `BeatRunner` validates it before calling `resolve_check()`. Invalid TN → `AuditFlag(CRITICAL)` + beat abort.
+- **(B) Enforce in auditor:** Leave `RulesEngine` accepting any TN; add a pre-commit auditor hook that validates TN against the legal set. Lighter change to beat.py; auditor already has the advisory infrastructure.
+- **(C) Defer:** Accept current behavior (adjudicator-asserted TN) as "good enough" for v1. Model prompts already specify the legal TN table; hallucinated TNs are rare and correctable via the D-031 retcon path.
+
+**Recommendation:** (A) for v1.1, (C) for Phase 22 v1. The exit gate for Phase 22 is "a player can run a complete text-only session" — not "rules are fully code-enforced." TN validation is a correctness improvement, not a runtime stability requirement. Adding it now risks scope creep; defer to v1.1 once the basic session flow is stable.
+
+**Status note:** Explicitly deferred to post-Phase-22 / v1.1. This decision remains Open so it is not forgotten. Record in the v1.1 worklog when addressed.
+
+**Relates to:** CORE §1 (determinism boundary), `rules.py` (`RulesEngine.resolve_check`), `gm.py` (`ResolutionPlan.tn`), `beat.py` (pre-roll TN validation), D-027 (lifecycle state — an invalid TN would produce an `aborted` state).
+
+---
+
+## D-045 · CreateSeam typed effect and Seam validation · Open · 2026-06-19
+
+**Question:** FABLE v6 §15 defines a Seam as a vulnerability marker on an entity or location that enables a terminal consequence when conditions are met. The consequence palette (D-025) currently supports `apply_stress`, `apply_scar`, `create_truth`, etc., but has no `create_seam` or `trigger_seam` effect type. Should these be added in Phase 22 or deferred?
+
+**Why it matters:** Without `CreateSeam`, the full Cost/Setback/Exposure consequence chain cannot reach terminal outcomes. Sessions can still run to conclusion via stress overflow → scar, but the Seam narrative structure (explicit vulnerability → triggered consequence) is unavailable. This is a completeness gap, not a runtime failure.
+
+**Decision (deferred):** Post-Phase-22. The Seam mechanic requires coordinated work across `effects.py` (new effect types), `world_state.py` (seam tracking), `plot_graph.py` (seam-tied plot nodes), and the consequence palette schema. This is a Phase 23 feature. Deferring does not prevent Phase 22 from shipping — the current stress/scar path provides terminal consequences.
+
+**Relates to:** D-025 (consequence palette), `effects.py`, `world_state.py`, Phase 23 planning.
+
+---
+
+## D-046 · Recovery clocks: recovery_for field and lapse behavior · Open · 2026-06-19
+
+**Question:** FABLE v6 §12 specifies recovery clocks — clocks that, when they fire, lapse a named Maintained Truth (e.g. "wound healing" clock expires the "hero.bleeding" truth on completion). The current `Clock` schema in `world_state.py` has no `recovery_for` field; `WorldSimulator.advance()` fires `front_advance` events but does not call `expire_maintained_truth()` automatically on clock completion.
+
+**Decision (deferred):** Post-Phase-22. Adding `recovery_for: str | None` to the `Clock` schema and wiring `WorldSimulator.advance()` to call `EffectExecutor.apply(ExpireMaintainedTruth(...))` on a full clock is a contained, testable change — but it touches the persistence layer (SQLite clock schema), the simulator, and effect typing. Deferring avoids a schema migration in Phase 22 and keeps the Phase 22 migration registry lean. Target: Phase 23 alongside CreateSeam.
+
+**Relates to:** `world_state.py` (Clock dataclass), `persistence.py` (SQLite clock schema), `effects.py` (`ExpireMaintainedTruth`), `gm.py` (`WorldSimulator.advance`), Phase 23.
+
+---
+
+## D-047 · Cost register mechanics: Ground / Trace / Relational · Open · 2026-06-19
+
+**Question:** FABLE v6 §7 defines three cost registers — Ground (positional cost: movement, cover), Trace (exposure cost: stealth, noise), Relational (social cost: trust, reputation). These have no typed effects (`ApplyCostRegister` or equivalent) in the current `effects.py`. Is a generic typed effect needed in v1?
+
+**Why it matters:** Without typed cost-register effects, palette entries can only apply stress and scars as mechanical consequences. Ground/Trace/Relational costs must be narrated by the GM rather than applied deterministically, which breaks the determinism boundary for this class of consequence.
+
+**Decision (deferred):** Post-Phase-22. A minimal implementation would be a generic `ApplyCostRegister(register: str, entity_id: str, description: str)` that logs the cost as a commitment. However, without a cost-register ledger in `WorldState` and a corresponding projection, this would be a write-only side effect with no read surface. Building it correctly requires the full Ledger model (§10). Deferring to Phase 23 alongside Seams and recovery clocks, where the Ledger can be designed holistically.
+
+**Relates to:** `effects.py`, `world_state.py` (Ledger model), `character_sheet.py` (Ground/Trace/Relational tracks), FABLE v6 §7/§10, Phase 23.
+
+---
+
+## D-048 · Post-v1 FABLE mechanics: Prep Rounds, Volatile overlay, Advancement, Opposition classes · Resolved (deferred) · 2026-06-19
+
+**Question (consolidated):** Four FABLE v6 mechanics have no implementation: Prep Rounds (§18), Volatile overlay (§20), Advancement (§21), and Opposition classes (§19). Should any be addressed in Phase 22?
+
+**Decision:** All four are deferred to post-v1 tracks, for the following reasons:
+
+- **Prep Rounds (§18):** Requires orchestrator round-type discrimination (prep vs. live vs. recovery). Current `Orchestrator` supports one round type. Deferring does not prevent play — scenes simply cannot have a declared prep phase. Post-v1 addition to the orchestrator.
+
+- **Volatile overlay (§20):** Requires a `volatile: bool` flag on `SceneMode` and TN/Exposure adjustment in `BeatRunner.run()` before the adjudicator call. Minor implementation but touched enough invariants (TN floor, Top-Exit block) to warrant a standalone change. Post-v1.
+
+- **Advancement (§21):** CORE §1 invariant 17: advancement must be causal (triggered by demonstrated play, not declared). Without a demonstrated-event tracker, advancement cannot be implemented correctly. Post-v1 design track — must not be retrofitted as a GM-declared effect.
+
+- **Opposition classes (§19):** Obstacle / Minor / Significant / Front are currently adjudicator-managed prose distinctions. Formalizing them requires a structured opposition registry in `world_state.py`. Useful for telemetry and encounter tracking; not required for session correctness. Post-v1.
+
+**Relates to:** `orchestrator.py`, `beat.py`, `world_state.py`, `character_sheet.py`, FABLE v6 §18–21.

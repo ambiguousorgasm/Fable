@@ -4,6 +4,44 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Phase 22: property, security, and schema tests + rule-gap decision audit (1401 tests)
+
+**`tests/test_phase22_properties.py`** — 39 property/invariant tests covering the five CORE principles:
+
+- **Log monotonicity** (2 tests): event count never decreases after appends; sequence numbers strictly increase.
+- **Projection subset + audience invariant** (3 tests): every event projected for an entity is a subset of all log events; projected events have monotone per-POV sequence; `project_for(gm)` ⊇ `project_for(hero)` in a typical beat.
+- **Secrecy invariant** (3 tests): GM lifecycle events (`validating`, `adjudicating`, `applying_effects`) absent from player projection across any number of beats; player-projected events cross-referenced against `log.all()` to confirm `hero` always in audience (uses ID cross-reference because `ProjectedEvent` never exposes `.audience` — secrecy-by-design); GM sees strictly more events than player.
+- **Belief store determinism** (3 tests): same seed → same committed facts; belief stores are idempotent across repeated calls; projection without facts has zero beliefs.
+- **Canon ledger consistency** (3 tests): committed fact visible in `canon_ledger`; second commit to same (subject, predicate) raises `CanonConflictError`; override with `reason=` kwarg succeeds without conflict.
+- **Transaction atomicity** (4 tests): aborted beat leaves event count unchanged; world state not mutated on abort; facts from aborted beat not in pipeline; committed beat writes events atomically.
+- **Replay** (3 tests): close + reopen restores events; beat_index survives round-trip; fact committed before close visible after reopen.
+- **CommitPipeline conflict detection** (3 tests): conflict raises `CanonConflictError`; override bypasses; distinct predicates on same subject do not conflict.
+
+**`tests/test_phase22_security.py`** — 26 security invariant tests covering all client-accessible surfaces:
+
+- **S-1 PlayInterface history gate** (3 tests): `audience=("gm",)` events (`narration`, `scene_transition`, `audit_advisory`) absent from `PlayInterface.history()`; player-audience events visible.
+- **S-3 Lore audience gate** (4 tests): `gm_only` lore entry never reaches player belief store even when keywords match; `gm_only` visible to GM; player-scoped entry invisible to other player; audience gate fires before keyword match (D-043 invariant).
+- **S-4 Telemetry isolation** (4 tests): `TelemetrySink.records` never appear in event log; telemetry and event log are fully separate objects; `CallRecord` carries no fictional state; model cost never lands as a commitment.
+- **S-5 Client input validation** (6 tests): empty action raises `ValueError("empty")`; long/special-char/unicode actions do not crash; injection attempt (`'; DROP TABLE events; --`) does not commit facts; SQL-injection payload produces no system event.
+- **S-7 OOC bypass** (3 tests): `session.step("/ooc ...")` produces an `ooc` event; no `narration` event; no model call (mock call count = 0).
+- **S-10 Narrator lore gate** (3 tests): narrator receives only player-entitled lore context; `gm_only` secrets not present in narrator prompt; model call captured and inspected to verify absence.
+
+**`tests/test_phase22_schema.py`** — 27 schema structural tests (no runtime jsonschema dependency):
+
+- **Schema file validity** (9 tests): file exists and is valid JSON; all required top-level fields present; `additionalProperties: false`; `$defs/commitment` has required fields + `epistemic_type` + `asserting_entity`; `roll_visibility` and `authorized_by` in schema properties.
+- **`Event.to_dict()` shape** (8 tests): all required fields present; no unexpected keys; audience is a list; commitments is a list with required sub-fields; epistemic types round-trip; `roll_visibility` null by default and valid when set; JSON serializable with round-trip.
+- **Complete beat event shapes** (10 tests): all stakeless beat events pass shape check; all stakes beat events pass shape check; dice events on `dice` channel; narration on `public` channel; lifecycle events on `system` channel; all events have non-empty ID; monotone sequence starting at 0; commitment fields all present; three-beat sequence all valid.
+
+**`DECISIONS.md` additions** — D-044 through D-048, explicit defer decisions for all unimplemented v6 mechanics:
+
+- **D-044** (TN table enforcement): defer to v1.1; option A (`LEGAL_TNS = {8, 10, 12, 13, 14}` in `rules.py`) noted as recommended implementation when accepted.
+- **D-045** (CreateSeam typed effect): defer to Phase 23; requires `create_seam`/`trigger_seam` effect types + seam tracking in `world_state.py`.
+- **D-046** (Recovery clocks `recovery_for` field): defer to Phase 23; requires `Clock.recovery_for: str | None` + SQLite schema migration.
+- **D-047** (Cost registers Ground/Trace/Relational): defer to Phase 23; requires full Ledger model before `ApplyCostRegister` is useful.
+- **D-048** (Prep Rounds, Volatile overlay, Advancement, Opposition classes): all deferred as post-v1 tracks with rationale per item.
+
+---
+
 ## 2026-06-19 — Phase 22: golden transcript suite (1309 tests)
 
 **`tests/test_phase22_golden.py`** — 53 end-to-end regression tests exercising the full deterministic stack with mocked models and seeded dice:
