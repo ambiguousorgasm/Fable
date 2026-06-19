@@ -108,7 +108,7 @@ def test_dice_rejects_degenerate_rolls():
         dice.roll(3, 1, author="gm")
 
 
-# --- rules engine band table (fable_engine.md §5) -------------------------
+# --- rules engine band table (FABLE_Engine_Schema_v6.md §5) ---------------
 
 
 @pytest.mark.parametrize(

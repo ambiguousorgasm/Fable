@@ -48,10 +48,17 @@ class WorldState:
     zones: set[str] = field(default_factory=set)
     connections: set[frozenset[str]] = field(default_factory=set)
     closeness: set[frozenset[str]] = field(default_factory=set)
+    maintained_truths: dict[str, Any] = field(default_factory=dict)
 
     def add_entity(self, entity: Entity) -> None:
         if entity.id in self.entities:
             raise ValueError(f"entity {entity.id!r} already exists")
+        self.entities[entity.id] = entity
+
+    def update_entity(self, entity: Entity) -> None:
+        """Replace an existing entity entry (e.g. after resource mutation)."""
+        if entity.id not in self.entities:
+            raise ValueError(f"entity {entity.id!r} not found")
         self.entities[entity.id] = entity
 
     def get_entity(self, entity_id: str) -> Entity:
@@ -105,3 +112,21 @@ class WorldState:
 
     def close_to(self, entity_id: str) -> set[str]:
         return {e for c in self.closeness if entity_id in c for e in c if e != entity_id}
+
+    # --- clocks and fronts -----------------------------------------------
+
+    def set_clock(self, name: str, data: dict) -> None:
+        """Create or replace a clock entry."""
+        self.clocks[name] = data
+
+    def set_front(self, name: str, data: dict) -> None:
+        """Create or replace a front entry."""
+        self.fronts[name] = data
+
+    def set_maintained_truth(self, key: str, data: dict) -> None:
+        """Register or replace a maintained truth (key = 'subject::predicate')."""
+        self.maintained_truths[key] = data
+
+    def expire_maintained_truth(self, key: str) -> None:
+        """Remove a maintained truth entry. No-op if already absent."""
+        self.maintained_truths.pop(key, None)

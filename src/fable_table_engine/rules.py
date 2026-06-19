@@ -1,4 +1,4 @@
-"""Rules engine — minimal interface (CORE §3, §7.2; `fable_engine.md` §5).
+"""Rules engine — minimal interface (CORE §3, §7.2; `FABLE_Engine_Schema_v6.md` §5).
 
 Phase 1 implements only the irreducible mechanical core needed to hold the
 determinism boundary: a single check that rolls 3d6 + Skill vs TN through the
@@ -7,7 +7,7 @@ cold `resolution` event linked to its dice event. It is the *adjudicator* half
 of the cold/warm split — it reads the outcome, it does not narrate it.
 
 Deliberately NOT here yet (later phases): Exposure, Effect, Trade, the Ledger,
-Clocks/Fronts, Stress/Scars, Edge. See `fable_engine.md` and the roadmap.
+Clocks/Fronts, Stress/Scars, Edge. See `FABLE_Engine_Schema_v6.md` and the roadmap.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from .event_log import _MECHANICAL_CAPABILITY, EventLog
 
 
 class Band(str, Enum):
-    """FABLE result bands by margin (`fable_engine.md` §5)."""
+    """FABLE result bands by margin (`FABLE_Engine_Schema_v6.md` §5)."""
 
     TRIUMPH = "Triumph"
     SUCCESS = "Success"

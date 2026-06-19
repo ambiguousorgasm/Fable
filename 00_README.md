@@ -7,7 +7,7 @@ This directory holds the design for the FABLE Table Engine: a system that simula
 | File | Responsibility | Change rate |
 |---|---|---|
 | `FABLE_Table_Engine_Blueprint.md` | **CORE.** Authoritative spine: goal, philosophy, the five principles, access model, beat loop, architecture, subsystems, roadmap, success criteria. | Slow / deliberate |
-| `fable_engine.md` | **FABLE ruleset (Engine Schema v4).** The mechanical spec the *rules engine* component implements: surfaces (TN/Exposure/Effect/Trade/Ledger), the roll, Truths, Clocks, Fronts, Edge, Stress/Scars, Modes, invariants. Authoritative for *rules mechanics*; CORE stays authoritative for *architecture*. | Slow / deliberate (game-design canon) |
+| `uploads/FABLE_Engine_Schema_v6.md` | **FABLE ruleset (Engine Schema v6).** The mechanical spec the *rules engine* component implements: surfaces (TN/Exposure/Effect/Trade/Ledger), the roll, Truths, Clocks, Fronts, Edge, Stress/Scars, Modes, invariants. Authoritative for *rules mechanics*; CORE stays authoritative for *architecture*. | Slow / deliberate (game-design canon) |
 | `COMPONENTS.md` | Authoritative **registry** of every model, service, and store — role, reads, writes, depends-on, and *depended-on-by*. The single place to answer "is this still needed, and what breaks if it goes." | Medium |
 | `DECISIONS.md` | Living **decision log** (ADR-lite): open and resolved design forks, with options, recommendation, rationale, date. | Medium |
 | `STATUS.md` | **Build tracker**: design-vs-implemented state per component and roadmap phase. Descriptive, not normative. | Fast |

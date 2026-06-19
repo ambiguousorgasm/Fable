@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "fable:campaign.schema.json",
+  "title": "FABLE Campaign Package",
+  "description": "Validated campaign data for a FABLE Table Engine session. Fronts, factions, functions, fixtures, hooks, clocks, preconditions, and hidden nodes. Never exposed to player or teammate belief projections.",
+  "type": "object",
+  "required": ["version", "title"],
+  "additionalProperties": false,
+  "properties": {
+    "version":     { "type": "string", "description": "Schema version string, e.g. \"1.0\"." },
+    "title":       { "type": "string", "description": "Human-readable campaign title." },
+    "description": { "type": "string", "default": "" },
+
+    "function_nodes": {
+      "type": "array",
+      "description": "Abstract narrative needs the plot must fulfill.",
+      "items": {
+        "type": "object",
+        "required": ["id", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id":          { "type": "string" },
+          "description": { "type": "string" },
+          "required":    { "type": "boolean", "default": true }
+        }
+      }
+    },
+
+    "hooks": {
+      "type": "array",
+      "description": "Live narrative functions with current fixture bindings and optional alternatives.",
+      "items": {
+        "type": "object",
+        "required": ["function_id", "binding"],
+        "additionalProperties": false,
+        "properties": {
+          "function_id": {
+            "type": "string",
+            "description": "Must match an id in function_nodes."
+          },
+          "binding": {
+            "type": "object",
+            "required": ["function_id", "fixture_entity_id", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "function_id":       { "type": "string" },
+              "fixture_entity_id": { "type": "string" },
+              "description":       { "type": "string" }
+            }
+          },
+          "preconditions": {
+            "type": "array",
+            "description": "Entity IDs that must be alive/available for this hook to be in play.",
+            "items": { "type": "string" }
+          },
+          "active": { "type": "boolean", "default": true },
+          "alternatives": {
+            "type": "array",
+            "description": "Ordered list of backup bindings if the active fixture is blocked.",
+            "items": {
+              "type": "object",
+              "required": ["function_id", "fixture_entity_id", "description"],
+              "additionalProperties": false,
+              "properties": {
+                "function_id":       { "type": "string" },
+                "fixture_entity_id": { "type": "string" },
+                "description":       { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "fronts": {
+      "type": "array",
+      "description": "Off-screen threats tracked by world clocks.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "threat", "clock_name", "consequence_truth"],
+        "additionalProperties": false,
+        "properties": {
+          "id":                { "type": "string" },
+          "name":              { "type": "string" },
+          "threat":            { "type": "string" },
+          "clock_name":        { "type": "string", "description": "Must match a name in world_clocks." },
+          "consequence_truth": { "type": "string" },
+          "faction_id":        { "type": ["string", "null"], "description": "Optional: must match an id in factions." }
+        }
+      }
+    },
+
+    "factions": {
+      "type": "array",
+      "description": "Standing forces with goals and momentum.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id":       { "type": "string" },
+          "name":     { "type": "string" },
+          "goals":    { "type": "array", "items": { "type": "string" } },
+          "momentum": { "type": "integer", "default": 0 }
+        }
+      }
+    },
+
+    "hidden_nodes": {
+      "type": "array",
+      "description": "Prepared-but-unrevealed function nodes; PlotManager may promote them.",
+      "items": {
+        "type": "object",
+        "required": ["id", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id":          { "type": "string" },
+          "description": { "type": "string" },
+          "required":    { "type": "boolean", "default": false }
+        }
+      }
+    },
+
+    "world_clocks": {
+      "type": "array",
+      "description": "Clocks to seed into WorldState at session start (D-026 schema).",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name":           { "type": "string" },
+          "current":        { "type": "integer", "default": 0 },
+          "max":            { "type": "integer" },
+          "trigger_types":  { "type": "array", "items": { "type": "string" } },
+          "active":         { "type": "boolean", "default": true },
+          "advance_policy": { "type": "string", "default": "per_trigger" },
+          "domain":         { "type": ["string", "null"] },
+          "fired":          { "type": "boolean", "default": false },
+          "landing_truth":  { "type": "string" },
+          "front_owner":    { "type": "string" }
+        }
+      }
+    }
+  }
+}

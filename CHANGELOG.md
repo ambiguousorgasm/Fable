@@ -4,6 +4,539 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Settings system design locked (D-041)
+
+**No code changes.** Design and planning documents only.
+
+**D-041 opened and resolved** (Settings system):
+- Layered JSON hierarchy: code defaults → `settings/models.json` → `settings/campaigns/{campaign_id}.json`. Engine always in a valid state with zero user configuration.
+- All essential model slots have defaults: `gm_adjudicator_model` / `gm_narrator_model` / `gm_world_simulator_model` / `auditor_model` / `social_interpreter_model` / `character_agent_default_model` all default to `claude-opus-4-8` except auditor (`claude-haiku-4-5-20251001`) and social interpreter (`claude-sonnet-4-6`).
+- Character agent slots are campaign-aware: one `character_agent_{entity_id}_model` key per seat in the loaded campaign roster, derived at load time.
+- API keys (voice, etc.) never stored in settings files; manager holds only the env-var name; GUI shows name + set/not-set status indicator only.
+- GUI contract: per-setting Reset button, file-path display, open-in-system-editor button; character slot rows generated dynamically from roster.
+- Planned components: `SettingsRegistry` (code defaults), `SettingsManager` (three-layer resolution, reads/writes JSON files), settings panel (interface sub-view).
+
+**Phase 21 deliverables updated** (IMPLEMENTATION_PLAN.md):
+- Added settings system as deliverable 5 (play interface renumbered to 6).
+- Exit gate extended: model choices and agent slots configurable and persistent across sessions.
+
+**COMPONENTS.md updated**: Settings system section added (after Session management section): `SettingsRegistry`, `SettingsManager`, settings panel.
+
+---
+
+## 2026-06-19 — Phase 21 scope expansion + post-v1 track design (D-039, D-040)
+
+**No code changes.** Planning and design lock only.
+
+**Phase 21 scope expanded** (IMPLEMENTATION_PLAN.md):
+- Home screen added as a Phase 21 deliverable: start screen with "New Campaign" (load pre-built `CampaignPackage`) and "Return to Saved Session" (session list).
+- Session manager (`SessionManifest`, `SessionManager`) added as Phase 21 deliverables: list/create/resume sessions; `SessionManifest` fields documented; schema version guard pulled forward from Phase 22.
+- Minimal schema version marker pulled forward: `open_session()` writes `schema_version` on first open; fails-closed on mismatch on resume. Phase 22 retains full migration registry work.
+- Phase 21 deliverables list now explicitly enumerates: home screen, session manager, schema version guard, production text-channel API (D-027/D-029/D-030/D-031/D-032/D-028), play interface.
+- Exit gate extended: sessions must be resumable across engine restarts without state corruption or silent schema mismatch.
+
+**D-039 opened and resolved** (Voice/TTS manual playback design):
+- Manual click-to-play only; off by default; per-speaker voice IDs in `settings/voice.json`; API key in env only (never in save file); audio cached per event-id+voice-id hash; TTS failure degrades to text; no game-state coupling.
+- Post-Phase-21 track. Do not implement during Phase 21 or Phase 22.
+- Planned components: `VoiceGateway`, `VoiceArtifactCache`, `settings/voice.json`.
+
+**D-040 opened and resolved (deferred)** (Campaign generation pipeline, Campaign-Authoring Studio):
+- Both generation modes (auto-generate, generate-from-prompt) lead to the same `CampaignPackage` via `CampaignCompiler` → validation → repair/retry.
+- Raw user input never reaches GM runtime context directly.
+- Phase 21 "New Campaign" flow loads pre-built packages only; generation UI is Campaign-Authoring Studio post-v1.
+- Required campaign fields table documented. Planned components: `CampaignCompiler`, `CampaignCompilerGateway`.
+
+**COMPONENTS.md updated**: Session management section added (Phase 21); Voice/TTS layer section added (post-v1); Campaign-Authoring Studio section added (post-v1).
+
+**DECISIONS.md updated**: D-039 and D-040 added; D-038 unchanged; Resolved section index updated.
+
+---
+
+## 2026-06-19 — Pre-Phase-21 Stress/Scar pull-forward
+
+Pulled forward from Phase 22 (beta hardening) as a live-play prerequisite. Addresses v6 §14 and invariant 9.
+
+**`ApplyScar` typed effect** (`effects.py`):
+- Fields: `entity_id`, `scar_type` (`"wound"` | `"mark"` | `"loss"`), `description`, `via_overflow: bool = False`, `seam_event_id: str | None = None`.
+- **Scar Route Invariant** enforced: rejected if neither `via_overflow=True` nor `seam_event_id` is set.
+- **3-slot cap** (`SCAR_CAP = 3`): 4th Scar rejected. When the 3rd Scar lands, executor appends a `character_broken` event (derived from the scar event).
+- Scars stored as `entity.resources["scars"]`: `list[{"scar_type": ..., "description": ...}]`.
+
+**`ApplyStress` cap enforcement** (`effects.py`):
+- `STRESS_CAP = 6` added. Positive stress that would exceed 6 triggers the overflow route.
+- Overflow requires `overflow_scar_type` + `overflow_scar_desc` on the `ApplyStress` effect; omitting them rejects the effect.
+- Overflow cascade: stress is cleared to 0, then `_apply_scar` is called internally with `via_overflow=True`. Scar cap rejection surfaces back through the `ApplyStress` result.
+- Negative stress (relief) floors at 0; no lower bound validation change needed.
+
+**`effect_from_dict` / `describe_effect`** updated for both new types.
+
+**`SCAR_CAP = 3`, `STRESS_CAP = 6`** exported from `__init__.py`.
+
+**30 new tests** in `tests/test_phase_scar.py`. **725 total tests passing.**
+
+**Files changed:** `effects.py`, `__init__.py`, `COMPONENTS.md`, `CHANGELOG.md`.
+**Unresolved decision IDs:** Seam (`CreateSeam` typed effect) is still Phase 22 — the `seam_event_id` field accepts any event ID today; live-Seam validation (is it actually an active Seam event?) is deferred.
+
+---
+
+## 2026-06-19 — D-027 through D-032: interface-facing decisions locked
+
+**No code changes.** Design lock before Phase 21 implementation.
+
+**D-027 (Action lifecycle states) — Resolved:** Backend-owned state machine `draft → submitted → validating → pending_player_choice → adjudicating → rolling → applying_effects → auditing → narrating → committed` with exits `cancelled / aborted / failed`. Client reads state, never writes it. OOC bypass path preserved. Aborted beat leaves dice events intact (D-035 settled).
+
+**D-028 (Knowledge transfer mechanisms) — Resolved:** Knowledge moves only through logged authorized events (whisper, public statement, share/briefing, shown object, observed action, perception-derived overhear). All transferred knowledge enters the receiving character's belief store as `epistemic_type="claim"`, never `"fact"`. Client never transfers facts between views.
+
+**D-029 (Roll visibility) — Resolved:** Four `visibility` values: `table` (default player roll, all authorized viewers see cold resolved detail), `roller_only`, `gm_only` (default GM/NPC roll, warm GM never receives it), `revealed` (GM has explicitly surfaced a hidden roll). Client and warm GM never receive `gm_only` rolls unless the roll's visibility is updated to `revealed`.
+
+**D-030 (Fictional time model) — Resolved:** Minimal backend-owned time anchor: `scene_id` (UUID, changes on major transition), `beat_index`, `scene_phase` (= `SceneMode`), `prose_time_label` (optional narrator-written label), `elapsed_category` (moments/hours/days/weeks/longer). Backend emits `scene_transition` structural event when `scene_id` changes. Client is a receiver only. The `scene_id` change serves as D-038's "major scene transition" trigger for portrait/scene image caching.
+
+**D-031 (Retcon/correction policy) — Resolved:** Two new event types: `correction` (authoritative correction of a prior fact; any authorized party) and `retcon` (strong narrative rewrite; requires human player in `authorized_by`). Append-only log preserved. `render_event()` emits superseded markers for entries with downstream corrections/retcons. No silent history rewriting.
+
+**D-032 (Epistemic certainty labels) — Resolved:** Six player-facing certainty labels emitted by the backend alongside commitments: `Confirmed` (`"fact"`), `Claimed` (`"claim"`), `Observed` (`"observation"`), `Suspected` (`"theory"` — added in Phase 21), `Unknown` (GM-annotated Case File template slot only; client never infers from absence), `Corrected/Superseded` (has a D-031 correction/retcon event). Client renders only; never computes certainty. Warm GM phrasing contract (declarative/attributed/perceptual-hedge/inference voice by epistemic type) enforced by auditor advisory flag. `"theory"` added to `EPISTEMIC_TYPES` in Phase 21.
+
+**Files changed:** DECISIONS.md (D-027 through D-032 resolved; Resolved index and MVP Defaults updated).
+
+---
+
+## 2026-06-19 — D-038: image generation architecture (planning capture)
+
+**No code changes.** Planning capture only — post-Phase-21 rendering layer, not implemented.
+
+**D-038 opened** (DECISIONS.md): full image generation architecture spec covering character portraits, scene images, map backgrounds, and text-graphic artifacts. Supersedes D-014 (absorbs its two load-bearing constraints).
+
+**Decided constraints recorded:**
+- Images are presentation only; `non_authoritative=True` on every artifact; event log wins on contradiction.
+- `ImagePromptAssembler` draws from viewer's authorized belief store only — POV partitioning applies to image prompts the same as to fiction.
+- Style instructions come from a user-editable config file (`settings/style_profile.json`), never from game state. Style and subject prompts are kept separate through to the API call.
+- Map images are aesthetic backgrounds only; location/route/fog-of-war/position overlaid from deterministic FABLE state.
+- Async generation, aggressive caching (snapshot hash), user visual mode: off/cheap/premium.
+
+**Open questions flagged:** portrait model (needs consistency testing), style profile file format, deterministic map rendering architecture, major-scene-transition definition as cache trigger, multi-viewer cache semantics.
+
+**Planned components added to COMPONENTS.md:** `ImageGenerationGateway`, `ImagePromptAssembler`, `ImageArtifactStore`/`ImageArtifact`, style profile.
+**IMPLEMENTATION_PLAN.md:** Scene Imagery post-v1 track expanded with D-038 full spec reference.
+
+---
+
+## 2026-06-19 — Phase 20: social interpretation and Bond compels
+
+**New module `social.py`:**
+- `BondRef` (frozen dataclass in `character_sheet.py`) — stable reference linking a narrative Bond to a Commitment ID in the event log. `CharacterSheet.bond_refs: list[BondRef]` added (mechanical handle); `bonds: list[str]` preserved for display and backward compat.
+- `PendingCompel` — frozen dataclass; the validated, unresolved state of a compel waiting for player accept/refuse. Never mutates state — it is a proposal, not a commitment.
+- `CompelResolution` — outcome of `resolve_compel()`: accepted flag, event IDs, applied effects list.
+- `SocialInterpreter` — model-driven analysis of social events via two tool calls: `propose_social_delta` and `propose_compel`. Validates proposals (unknown entities rejected, self-reference rejected, zero deltas rejected, interiority language screened). Returns `(list[DispositionDelta], list[PendingCompel])` — no state written. On model failure: graceful `([], [])` return.
+- `resolve_compel(pending, accepted, log, executor, audience)` — the authoritative write point for compel outcomes. Accept: logs `compel_accepted`, applies `GainEdge(1)` via `EffectExecutor`, logs `compel_resolved`. Refuse: logs `compel_refused`, logs `compel_resolved`. All events derive from `compel_proposed_event_id`.
+- Interiority invariant enforced: `_check_interiority()` screens for language asserting character feelings/beliefs/choices; proposals containing flagged patterns are rejected before reaching the caller.
+
+**Modified `effects.py`:**
+- `GainEdge(kind, entity_id, amount)` — grants Edge; enforces cap-3 invariant (v6 §13); silently clamps if already at cap.
+- `SpendEdge(kind, entity_id, amount, spend_type)` — spends Edge; rejects if insufficient; logs spend_type for provenance.
+- Both added to `TypedEffect` union, `EffectExecutor.apply()`, `effect_from_dict()`, `describe_effect()`.
+
+**Modified `provider.py`:**
+- `ModelCallError` exception — typed failure after all retries exhausted; carries `role`, `attempts`, `last_error`.
+- `ModelGateway.__init__` now accepts `timeout_secs: float | None = 60.0` and `max_retries: int = 1`.
+- `ModelGateway.call()` implements timeout forwarding via `kwargs.setdefault("timeout", ...)`, retry loop on `APITimeoutError`/`APIConnectionError` with exponential backoff (0.5 s, 1.0 s, …), telemetry recorded per attempt (including failed attempts with zero tokens), `ModelCallError` raised after all attempts fail.
+
+**D-011** fully resolved (Phase 20 adds model-proposed delta path). D-017 timing note updated (ModelGateway IS the seam; full adapter → Phase 22).
+
+52 new tests (`tests/test_phase20_social.py`); 695 total.
+
+---
+
+## 2026-06-19 — Phase 19: disposition graph core
+
+**New module `disposition.py`:**
+- `DispositionAxis` enum — `TRUST`, `AFFECTION`, `RESPECT`, `OBLIGATION`.
+- `DispositionDelta` — frozen dataclass; `causal_event_id` required (enforced in `__post_init__`); `delta` must be non-zero; `to_dict`/`from_dict` roundtrip.
+- `DispositionGraph` — directed, asymmetric, multi-axis relationship state. `apply_delta` is the sole write path; `edge(from_id, to_id)` returns current axis values; `deltas_for_event(event_id)` returns causal provenance; `context_block(from_id)` renders non-zero relationships for agent prompts. `to_dict`/`from_dict` serialization.
+- `DispositionEngine` — sole authoritative writer of the graph (CORE §7.5). `process_event(event)` runs the deterministic recognition rule table; D-011 option (c) deterministic half: `"disposition_delta"` commitment (explicit signal), `"stress_taken_for"` (→ +1 trust), `"triumph_for"` (→ +1 respect). Model-proposed deltas for ambiguous social cues deferred to Phase 20.
+
+**Modified `persistence.py`:**
+- `SQLiteDispositionGraph` — SQLite-backed `DispositionGraph` subclass; `apply_delta` calls `_save()`. `_load()` clears and repopulates from DB on init and on rollback. Shares `_tx_active` with `SQLiteEventLog` for D-023 atomicity.
+- `SQLiteEventLog._disposition_ref` — new back-reference; `transaction()` rollback now includes `_disposition_ref._load()` so disposition mutations are atomic with event log and world state.
+- `attach_disposition(log) -> SQLiteDispositionGraph` — factory; wires rollback via `_disposition_ref`.
+
+**D-011** partially resolved: deterministic recognition half built; model-proposed path deferred to Phase 20. Recorded in `DECISIONS.md` resolved section.
+
+37 tests (`tests/test_phase19_disposition.py`); 643 total.
+
+---
+
+## 2026-06-18 — v6 reference reconciliation and coverage audit
+
+**Reference cleanup:** Replaced all ghost references to `fable_engine.md` (Engine Schema v4) with `uploads/FABLE_Engine_Schema_v6.md` project-wide. Affected files: `rules.py`, `character_sheet.py`, `gm.py`, `tests/test_phase1_behavior.py`, `COMPONENTS.md`, `DECISIONS.md`, `FABLE_Table_Engine_Blueprint.md`, `STATUS.md`, `00_README.md`, and prior `CHANGELOG.md` entries. Confirmed by grep — zero remaining references to the old path.
+
+**Coverage audit:** Cross-referenced `effects.py`, `rules.py`, `character_sheet.py`, `gm.py`, and beat/resolution machinery against `uploads/FABLE_Engine_Schema_v6.md` (§5–§23). Full gap table added to `STATUS.md`. Key findings:
+- Core resolution surfaces (§5–§8, §11–§13 bands, §16 Clocks, §12 Truths, §13 Edge field) are built.
+- Missing typed effects: `ApplyScar`, `GainEdge`, `SpendEdge`, `CreateSeam` — none have `EffectExecutor` operations.
+- Stress overflow → Scar route (§14/§23 inv. 9) is the most mechanically critical gap for live play.
+- Unimplemented subsystems: Prep Rounds (§18), Volatile overlay (§20), Advancement (§21), Opposition classes (§19), recovery clocks (§12), TN deterministic enforcement (§6).
+- Phase assignments: Edge effects → Phase 19; all other gaps → Phase 22. Full breakdown in `STATUS.md` coverage table and `IMPLEMENTATION_PLAN.md` Phase 22 section.
+
+**Context:** Prompted by collaborator notes (`uploads/h.md`) requesting explicit v6 audit and gap tracking in STATUS/IMPLEMENTATION_PLAN rather than leaving them implicit.
+
+---
+
+## 2026-06-18 — Phase 17: campaign package + plot-graph core
+
+**New module `campaign.py`:**
+- `CampaignPackage` — validated, deserialized campaign data: `title`, `version`, `description`, `function_nodes`, `hooks`, `fronts`, `factions`, `hidden_nodes`, `alternative_fixtures`, `world_clocks`.
+- `load_campaign(path) -> CampaignPackage` — reads and validates a campaign JSON file from disk.
+- `load_campaign_dict(data) -> CampaignPackage` — validates and deserializes a campaign dict. Cross-reference validation: hook `function_id` must match a declared function node; front `clock_name` must match a declared world clock (when any are declared); front `faction_id` must match a declared faction (when any are declared). Duplicate IDs rejected. `ValueError` on any failure.
+- `CampaignPackage.to_plot_graph() -> PlotGraph` — constructs a live in-memory `PlotGraph` from the package.
+- `CampaignPackage.seed_world(world)` — seeds `WorldState.set_clock` for each `world_clocks` entry.
+- Hook alternatives are embedded per hook in the campaign JSON (`alternatives` list) and extracted into `PlotGraph.alternative_fixtures` at load time.
+
+**New schema `schemas/campaign.schema.json`:** JSON Schema (draft-07) for campaign packages; documents all fields, types, defaults, and relationship constraints.
+
+**Modified `plot_graph.py`:**
+- `PlotGraph.update_hook_binding(function_id, new_binding)` — new mutation seam; `SQLitePlotGraph` overrides it to call `_save()`. `PlotManager.accept_rebinding` now routes through this method instead of mutating `hook.binding` directly, so the SQLite subclass can intercept and persist.
+- `PlotGraph.add_hidden_node(node)` — new method for hidden node additions (also overridden by `SQLitePlotGraph`).
+- `PlotGraph.to_dict() -> dict` — serializes the full graph to a JSON-compatible dict (for persistence).
+- `PlotGraph.from_dict(d) -> PlotGraph` — classmethod that deserializes a dict produced by `to_dict()`.
+
+**Modified `plot_manager.py`:**
+- `PlotManager.accept_rebinding` now calls `self._graph.update_hook_binding(hook.function_id, new_binding)` instead of iterating hooks directly. No behavior change for in-memory graphs; enables `SQLitePlotGraph` to persist the rebinding.
+
+**New `SQLitePlotGraph` in `persistence.py`:**
+- `SQLitePlotGraph(conn, _tx_active)` — SQLite-backed `PlotGraph` subclass; same interface as `PlotGraph`. Every mutation method (`add_function`, `add_hook`, `add_front`, `add_faction`, `add_hidden_node`, `set_alternatives`, `update_hook_binding`) calls `_save()` after the in-memory change. `_load()` clears all collections and repopulates from DB; called on init and on transaction rollback.
+- Table: `plot_graph (key TEXT PRIMARY KEY, value TEXT NOT NULL)` — single JSON blob row, matching the `world_state` pattern.
+- `SQLiteEventLog` gains `_plot_graph_ref: SQLitePlotGraph | None = None`; `transaction()` rollback now calls `_plot_graph_ref._load()` so plot graph mutations are included in the D-023 atomic beat transaction.
+
+**New `attach_campaign(log, campaign=None)` in `persistence.py`:**
+- Creates a `SQLitePlotGraph` sharing the log's connection and `_tx_active`, wires it to `log._plot_graph_ref`, and (if the graph is empty and a campaign is supplied) seeds from the campaign. A resumed session's existing graph is never overwritten. Call after `open_session`.
+
+**Access control invariant (structural):** No code path leads from `SQLitePlotGraph` or `PlotGraph` to `project_for`, `CommitPipeline`, or any player-facing projection. Campaign package data must never be passed to player or TM belief stores. The isolation is structural.
+
+**Decisions:** D-016 extended to cover `SQLitePlotGraph` as the persistence layer for PlotManager's sole-writer contract. D-037 resolved (see DECISIONS.md). D-034 not yet resolved — Phase 17 campaign schema intentionally does not include Opening/MaintainedTruth data; that decision can be made independently.
+
+**Tests:** 31 new tests in `tests/test_phase17_campaign.py`; **606 total** (all pass).
+
+---
+
+## 2026-06-18 — Phase 16: scene cadence + companion activation gate
+
+**New types in `orchestrator.py`:**
+- `SceneMode` (str enum) — six narrative modes: `quiet`, `dialogue`, `tactical`, `combat`, `downtime`, `high_drama`. Combat / tactical / high-drama activate all present companions; quiet and downtime cap at 1; dialogue caps at 2.
+- `SceneCadence` — holds the current `SceneMode` and an always-active companion set. `set_mode(mode)` transitions scene mode deterministically (no model call). `select_companions(candidates, *, spotlight_order)` returns the activated subset: always-active companions first, then conditional companions in spotlight priority order up to the remaining slots. A companion not returned must receive no model call.
+- `Orchestrator.sorted_by_spotlight(candidates)` — new public helper that sorts candidates least-recently-acted first (never-acted → highest priority). Used by `SceneCadence.select_companions` for slot assignment in limited modes.
+
+**Modified `beat.py`:**
+- `BeatRunner.run_round` gains optional `scene_cadence: SceneCadence | None = None` parameter. When supplied, AI companion seats are filtered through `scene_cadence.select_companions` (with spotlight priority from the orchestrator) before the round loop begins. Gated companions are removed from `remaining` and receive zero model calls. Human seats (those without an `agents` entry) are never gated. Backward-compatible: omitting `scene_cadence` restores the previous every-seat-every-round behaviour.
+
+**Decision resolved:** D-021 (option b — explicit scene modes, deterministic transitions, agent bidding deferred).
+
+**Tests:** 46 new tests in `tests/test_phase16_cadence.py`; 572 total (all pass).
+
+---
+
+## 2026-06-18 — Phase 15: human-seat adapter + text playtest console
+
+**New module `console.py`:**
+- `parse_proposal(text, agent) -> Proposal` — converts raw player text to a channel-tagged `Proposal`. Syntax: `whisper <target>: <intent>` → whisper; `/ooc <intent>` → OOC; anything else → public. Raises `ValueError` for malformed whisper (no colon, empty target, empty intent) or empty input. Extra whitespace is stripped.
+- `render_event(event: ProjectedEvent) -> str | None` — formats one entitled event as a display string. Renders `narration`, `ooc`, `dice_roll`, `resolution`, `front_advance`; returns `None` for GM-internal types (audit, system, effect_applied, etc.).
+- `PlaytestSession(runner, assembler, player_id)` — wraps `BeatRunner` with: `step(text)` (parse → run → return new entitled lines), `player_view()` (full entitled history), `export_transcript()` (text), `export_transcript_json()` (list of dicts). Reads only `assembler.belief_store(player_id)` — never the raw log or GM context. `_drain_new_events()` tracks rendered event IDs so `step()` returns only what is new since the last call.
+
+**Architecture invariants met:**
+- The client never computes audiences, rules, effects, or hidden state.
+- Human proposals and AI proposals use the same `Proposal` → `BeatRunner.run()` contract (D-015 groundwork; seat-agnostic path intact).
+- `export_transcript_json` is derived from `belief_store`, not the raw log — entitlement is structural, not checked at render time.
+
+**Exports:** `PlaytestSession`, `parse_proposal`, `render_event` added to `__init__.py` and `__all__`.
+
+**Tests:** 44 new tests (`tests/test_phase15_console.py`); 526 total. Covers: proposal parsing (all three channels, edge cases), event rendering (all event types), `PlaytestSession.step` (narration, OOC, incremental drain, repeated calls), entitlement isolation (GM-only events invisible, third-party whispers invisible), whisper target visibility, `player_view`, `export_transcript`, `export_transcript_json`.
+
+---
+
+## 2026-06-18 — Phase 14: provider gateway + isolated telemetry (D-017, D-022)
+
+**New module `provider.py`:**
+- `ModelGateway` — single controlled seam for all model calls. Wraps an `anthropic.Anthropic` client (or any duck-typed mock). `call(role, **kwargs)` delegates to `client.messages.create(**kwargs)`, records a `CallRecord` with latency + token counts + cost, and returns the response unchanged.
+- `TelemetrySink` — in-process append-only store of `CallRecord` entries. `summary()` returns totals and per-role breakdowns. Zero coupling to fictional state (D-022): no reference to `EventLog`, `CommitPipeline`, `ContextAssembler`, or any belief store.
+- `CallRecord` — dataclass: `role`, `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost_usd`, `latency_ms`.
+- Pricing table (cached 2026-06-04): `claude-sonnet-4-6` ($3.00/$15.00 per 1M), `claude-haiku-4-5[-20251001]` ($1.00/$5.00 per 1M), `claude-opus-4-8` ($5.00/$25.00 per 1M). Cache read ≈ 0.1× input; cache write (5-min TTL) ≈ 1.25× input. Unknown models fall back to sonnet pricing.
+
+**Caller changes (all four model-call sites):**
+- `AdjudicatorGM`, `NarratorGM` (`gm.py`): constructor `client: anthropic.Anthropic` → `gateway: ModelGateway`; attribute renamed `_client` → `_gateway`; call sites use `self._gateway.call("adjudicator", ...)` / `self._gateway.call("narrator", ...)`.
+- `CharacterAgent` (`character_agent.py`): same pattern; call site uses `self._gateway.call("character_agent", ...)`.
+- `Auditor` (`auditor.py`): constructor `client: anthropic.Anthropic | None` → `gateway: ModelGateway | None`; call site uses `self._gateway.call("auditor", ...)`. Keyword arg renamed from `client=` to `gateway=`.
+
+**Exports:** `CallRecord`, `ModelGateway`, `TelemetrySink` added to `__init__.py` and `__all__`.
+
+**Tests:**
+- `tests/test_phase14_gateway.py` — 26 new tests covering: delegation, role tagging, token/cost recording, latency, missing usage fields, pricing model comparison, unknown model fallback, sink accumulation, shared sink, D-022 isolation contract, and all four caller integration smoke tests.
+- All existing tests updated: mock `anthropic.Anthropic` clients are now wrapped in `ModelGateway(client)` before being passed to constructors. The underlying mock is still inspectable via `client.messages.create.call_args` since `ModelGateway.call()` delegates through it. `runner._narrator._client` access in `test_phase5_gm.py` updated to `runner._narrator._gateway._client`.
+
+**Resolves D-022** (telemetry isolation). D-017 (provider-agnostic adapter) remains open as a future goal.
+
+---
+
+## 2026-06-18 — Phase 13: narrow complete FABLE resolution slice (D-025)
+
+**ResolutionPlan (`gm.py`):**
+- `StakesDecision` renamed to `ResolutionPlan`; `StakesDecision = ResolutionPlan` alias preserves backward compatibility for all existing imports and test construction.
+- New fields (all optional with defaults): `action_domain: str = "beat"`, `exposure: int | None`, `effect: str | None`, `trade_options: list[str]`, `trade_default: str = "Balanced"`, `consequence_palette: dict[str, list[dict]]`, `triumph_effects: list[dict]`, `edge_label: str | None`, `seam: bool = False`.
+- `_ADJUDICATE_TOOL` schema extended with all new fields; nested `_EFFECT_ENTRY_SCHEMA` describes typed effect entries for palettes.
+- `_ADJUDICATOR_SYSTEM` updated: "TN measures DIFFICULTY, not danger — Exposure measures danger severity. Trade changes Exposure and Effect, never TN."
+- `AdjudicatorGM.evaluate()` parses all new fields; `max_tokens` increased to 512.
+- `NarratorGM.narrate()` gains optional `effective_effect: str = "Standard"` and `applied_summary: str | None` — narrator weaves mechanical consequences into fiction without naming them as mechanics.
+
+**Effect helpers (`effects.py`):**
+- `effect_from_dict(d)` — converts raw adjudicator JSON palette dicts to `TypedEffect` objects. Raises `ValueError` for unknown kind, `KeyError` for missing required fields.
+- `describe_effect(effect)` — produces a brief plain-English summary of any `TypedEffect` for narrator context assembly.
+
+**Trade + consequence palette (`beat.py`):**
+- `EFFECT_TIERS = ["Minimal", "Standard", "Superior", "Extreme"]` constant.
+- `_apply_trade(base_exposure, base_effect, trade)` helper — applies Aggressive/Balanced/Guarded shift to exposure and effect tier; clamps both; never touches TN.
+- `BeatRunner.run()` gains `trade: str | None = None` param. After the stakes gate, effective trade, exposure, and effect are computed before the dice roll.
+- Consequence palette applied inside the beat transaction after the roll: selects the matching band (cost/setback/triumph), converts raw dicts via `effect_from_dict()`, applies via executor. Invalid entries and rejected effects log `audit_advisory` events and do NOT abort the resolved beat.
+- `simulator.advance()` now passes `stakes.action_domain or "beat"` — domain-matched clock advancement (D-026).
+- `applied_summary` built from accepted effect results via `describe_effect()`; passed to `NarratorGM.narrate()`.
+- `BeatResult` gains `applied_trade`, `effective_exposure`, `effective_effect` fields.
+
+**Exports (`__init__.py`):** `ResolutionPlan`, `effect_from_dict`, `describe_effect` added to public surface.
+
+**Tests:** 58 acceptance tests in `tests/test_phase13_resolution.py`. 456 total pass.
+
+**Open decisions shaped by this phase:** D-025 (consequence palette — implemented), D-026 (domain-matched clock advancement — completed here), D-034 (Openings model — still open, Phase 17 target).
+
+---
+
+## 2026-06-18 — Phase 12: typed effect executor
+
+**Typed effect schema (`effects.py`):**
+- 10 typed effect dataclasses: `CreateTruth`, `ChangeTruth`, `ExpireTruth`, `AdvanceClock`, `ApplyStress`, `ChangeAccess`, `MoveEntity`, `ChangeResource`, `CreateMaintainedTruth`, `ExpireMaintainedTruth`. `TypedEffect` union exported.
+- `EffectExecutor`: validates and applies typed effects; logs `effect_applied` events with `derived_from` provenance; fires `front_advance` when a clock fills; rejects invalid/contradictory/unsupported effects before state mutation.
+- `EFFECT_AUTHOR = "rules-engine"`, `EFFECT_EVENT_TYPE = "effect_applied"` constants.
+
+**Expiry tombstone:**
+- `"expired"` added to `EPISTEMIC_TYPES` in `events.py`. `committed_facts()` in `access.py` now pops the (subject, predicate) key when it encounters an "expired" commitment — so `ExpireTruth` and `ExpireMaintainedTruth` cleanly remove prior facts from both `committed_facts` and `canon_ledger`.
+
+**WorldState extensions (`world_state.py` + `persistence.py`):**
+- `WorldState.maintained_truths: dict` field added; `set_maintained_truth()`, `expire_maintained_truth()` methods added.
+- `WorldState.update_entity()` added (replaces existing entity in-place for resource/stress mutation).
+- `SQLiteWorldState` overrides all three new methods to call `_save()`; `_load()` and `_save()` updated to include `maintained_truths`.
+
+**Scene extension (`perception.py`):**
+- `Scene.illuminate(zone)` and `Scene.open_connection(a, b)` added to base class (were only on `SQLiteScene`). `SQLiteScene` overrides remain for persistence.
+
+**BeatRunner integration (`beat.py`):**
+- `BeatRunner.__init__` gains optional `executor: EffectExecutor | None` parameter.
+- Step 6 converts `declared_facts` → `CreateTruth` effects and routes through executor when present; falls back to direct `pipeline.commit()` when absent. `BeatResult.effect_results` field added.
+
+**Tests:** 53 acceptance tests in `tests/test_phase12_effects.py`. 398 total pass.
+
+---
+
+## 2026-06-18 — Phase 11: epistemic commitment contract (D-024)
+
+**Commitment provenance:**
+- `Commitment` gains `epistemic_type: str = "fact"` (validated against `{"fact","claim","observation"}`), `asserting_entity: str | None`, and `observing_entity: str | None`. `to_dict()` includes the new fields when set; `_commitment_from_dict()` round-trips them.
+- `access.committed_facts()` now skips non-fact commitments: a claim with the same `(subject, predicate)` key no longer silently overwrites an objective fact when folding the log.
+
+**Belief dataclass:**
+- `Belief` gains `epistemic_type`, `asserting_entity`, and `observing_entity` (all default-safe for existing call sites).
+
+**BeliefStore folding rules:**
+- `BeliefStore` gains `claims: tuple[Belief, ...]` and `observations: tuple[Belief, ...]`. The `beliefs` dict is now facts-only (invariant: claims never silently enter facts).
+- `BeliefStore.claims_about()` and `observations_about()` filter by `(subject, predicate)`.
+- `ContextAssembler._fold_epistemic(events)` splits projected events into `(facts_dict, claims_list, obs_list)`. `beliefs_from()` delegates to it (returns facts only). `belief_store()` populates all three.
+
+**Tests:** 33 acceptance tests in `tests/test_phase11_epistemic.py` covering all six f.md exit-gate criteria. 345 total pass.
+
+---
+
+## 2026-06-18 — Phase 10: atomic session + replayable scene state
+
+**Scene persistence:**
+- `SQLiteScene` added to `persistence.py`: drop-in subclass of `Scene`; persists `dark_zones` and `closed_connections` in a `scene_state` table in the shared SQLite DB; shares the `_tx_active` flag with `SQLiteEventLog` and `SQLiteWorldState` so all three are committed or rolled back together; `_load()` is called on rollback via `SQLiteEventLog._scene_ref`.
+- `SQLiteScene.illuminate(zone)` and `SQLiteScene.open_connection(a, b)` added as explicit undo methods (persisted).
+- `open_session()` return type extended to `(log, world, scene)` — a 3-tuple; all existing call sites updated.
+- `EventLog.transaction()` no-op context manager added to the base class so `BeatRunner` can always call `with self._log.transaction():` without checking the backend.
+
+**Atomic beat transaction:**
+- `_BeatAborted` exception added to `beat.py`: used internally to trigger a transaction rollback from inside the `with self._log.transaction():` block.
+- `BeatRunner.run()` restructured: steps 6 (fact commit), 8 (narrate), post-narration audit, 9 (narration log), and clock ticks are now wrapped in a single `with self._log.transaction():`. On post-narration audit block, `_BeatAborted` is raised, causing the transaction to roll back the step-6 fact commits and any other writes — no partial beat state persists.
+- Pre-commit audit (step 7 hook 1) remains outside the transaction so audit events auto-commit even when the beat aborts.
+
+**Tests:** 17 new tests in `tests/test_phase10_session.py` (scene persistence, atomic commit, rollback on audit block, whisper privacy after restart, canon ledger replay consistency). 312 total pass.
+
+---
+
+## 2026-06-18 — Pre-Phase R: adopt f.md roadmap; renumber phases 9–22
+
+Replaced the original overloaded Phase 9–11 plan with the 14-phase stabilization roadmap from `uploads/f.md`. Changes:
+
+- `IMPLEMENTATION_PLAN.md` fully rewritten: phases 1–9 collapsed to a summary table; Phase 10 (atomic session) is the current milestone with full spec; Phases 11–22 added with brief descriptions and exit gates; post-v1 tracks listed.
+- `STATUS.md` phase table updated: Phase 9 (audience delivery, D-033) added as Built; old Phase 9 (plot-manager) → Phase 18; old Phase 10 (disposition) → Phase 19; old Phase 11 (interface + voice) → Phase 21 (text-only, voice explicitly deprecated); Phases 10–17, 20, 22 added as Designed or In progress.
+- Voice/TTS scope formally removed from Phase 21. Legacy ElevenLabs / audio-routing substrate is deprecated and must not receive new feature work.
+- Phase 10 and Phase 11 marked In progress (partial implementations exist: `SQLiteEventLog.transaction()`, `Commitment.epistemic_type`).
+
+No runtime changes; no test impact. 294 tests continue to pass.
+
+---
+
+## 2026-06-18 — D-033: audience preservation delivery contract (Task 1, e.md)
+
+**Root cause confirmed and fixed:** `run_with_agent()` discarded `Proposal.channel` and `Proposal.target`, extracting only `intent` as a plain string. `run()` had no channel parameter. Step 9 always emitted `channel="public"` to all world entities — whisper proposals produced public narration visible to every character. A P0 secrecy boundary failure.
+
+**Fix:**
+- `DeliveryScope` frozen dataclass holds the resolved `channel`, `audience` tuple, and optional `target`. Computed once at beat entry by `_resolve_delivery()` and threaded to the step-9 `log.append()` call — nothing downstream can widen or reconstruct it.
+- `_resolve_delivery()` validates whisper targets against `world.entities` before any model call; raises `ValueError` on unknown target, self-whisper, or missing target.
+- OOC early exit: emits one `ooc`-channel event, returns `BeatResult(channel="ooc")`. No adjudicator, narrator, commit, or clock call is made.
+- `_narrator_context(store, channel)`: for public beats, filters actor's belief store to `channel=="public"` events only — actor-private whispers cannot flow into prose that all present participants see (invariant 5).
+- `run_with_agent()` passes `proposal.channel` and `proposal.target` to `run()`.
+- `run_round()` now accepts `dict[str, str | Proposal]` for player proposals; bare strings remain public-channel; Proposal objects preserve channel and target through queue transit.
+- `BeatResult.channel` field added.
+
+**Tests:** 28 new tests in `tests/test_audience_preservation.py`. 294 total pass.
+**Decision:** D-033 (resolved).
+
+---
+
+## 2026-06-18 — Open D-027–D-032: integration-layer design decisions
+
+Cross-cutting concerns from an external design review promoted into the decision log as open questions. All six are backend-relevant now or in the next 1–2 phases:
+
+- **D-027** — Action lifecycle states: should proposals carry an explicit `ActionLifecycleState` enum (Draft → Submitted → Resolving → Committed → Narrated, with Cancelled/Stale exits)?
+- **D-028** — Knowledge-sharing transfer mechanisms: how does information cross POV boundaries when separated characters regroup? Hybrid policy (explicit under pressure; GM-narrated merge on downtime) recommended; shared knowledge enters as `claim`, not `fact`.
+- **D-029** — Roll visibility and secret-check policy: `dice_roll` events need a `visibility` field (`table` / `roller_only` / `gm_only` / `revealed`) consistent with the existing audience model (D-013); absence causes GM secret checks to default to full-table visibility.
+- **D-030** — Fictional time model and time-advance triggers: extends D-026 with a `FictionalTimeScale` enum and a `scene_time` field on world state; scene transitions are structural (non-fiction) events so clocks, the plot manager, and the spotlight controller respond deterministically without being driven by API latency.
+- **D-031** — Retcon, correction, and session-fork policy: defines `correction` and `retcon` event types; no history deletion; retcon requires human-player concurrence (D-008 backstop); GM-only revision is an override, not a retcon.
+- **D-032** — Epistemic certainty in player-facing presentation: extends D-024's `epistemic_type` data model with a warm GM narration contract (phrasing guide per type) and a phase 11 label display in the Case File; the auditor treats narrating a claim as confirmed fact as an advisory semantic flag.
+
+No implementation changes; no test impact.
+
+---
+
+## 2026-06-18 — Phase 9: plot-manager, D-016/D-023/D-026 implemented
+
+**Phase 9 built — plot-manager + interest signals + clock triggers + atomic transactions:**
+
+- `plot_graph.py` (new): `FunctionNode`, `FixtureBinding`, `Hook`, `Front`, `Faction`, `PlotGraph`, `InterestSignalAccumulator`. PlotGraph holds function nodes → hooks (current fixture binding + alternatives), fronts (off-screen threats with clocks), factions (standing forces), and hidden nodes. `InterestSignalAccumulator` tracks weighted per-subject signals with `promotion_candidates()` above threshold.
+- `plot_manager.py` (new): `PlotManager` — sole authoritative writer of the plot graph (D-016). Detects blocked fixtures via canon ledger (`condition in {destroyed,captured,dead,unavailable,eliminated}` or `available=False`). `propose_rebinding` emits `plot_revision` events (`audience=(gm, plot_manager)` only — never in player belief stores); `accept_rebinding` updates the graph. `handle_clock_fired` logs `front_consequence` events for owning fronts. `post_beat` convenience wrapper: handle clock events + check/propose/accept all fixture issues. `gm_context_summary` returns GM-only hook+front overview included in the adjudicator's world summary.
+- `gm.py` — **D-026 implemented**: `WorldSimulator.advance(trigger="beat")` now filters on `trigger_types` and `active` clock fields. Clocks without `trigger_types` default to `{"beat"}` (backward compatible with all existing tests).
+- `persistence.py` — **D-023 implemented**: `SQLiteEventLog.transaction()` context manager; shared `_tx_active: list[bool]` flag between `SQLiteEventLog` and `SQLiteWorldState`; snapshot-and-restore on rollback (event log in-memory + WorldState `_load()` via back-reference). `open_session` wires the shared flag and back-reference. Auto-commit path unchanged when not in a transaction.
+- `beat.py`: `BeatRunner` gains optional `interest_accumulator` and `plot_manager` params. `_world_summary` includes plot context when a plot_manager is provided. `simulator.advance("beat")` now passes the trigger tag (D-026). `plot_manager.post_beat(clocks_fired)` called after clock tick. Actor interest signal (`category="action"`, weight 0.5) emitted to accumulator on every beat.
+- **D-016 resolved**: PlotManager is the sole authoritative writer; coherence enforced by the canon-ledger boundary.
+- 59 tests added (`tests/test_phase9_plot.py`); 266 total.
+
+**D-025 status:** Resolved in design (previous session); implementation (ResolutionPlan + EffectExecutor + adjudicator tool schema update) deferred post-Phase-9 — PlotManager acceptance tests do not require it.
+
+---
+
+## 2026-06-18 — D-023–D-026 resolved; D-024 implemented
+
+**D-024 implemented — epistemic commitment types (`events.py`, `access.py`, `persistence.py`):** Added `epistemic_type: str = "fact"` to `Commitment` (validated against `EPISTEMIC_TYPES = {"fact","claim","observation"}`; backward-compatible default). `canon_ledger()` now filters to `revealed=True AND epistemic_type=="fact"` — NPC claims and character observations cannot silently enter objective world state. `CommitPipeline.check()` skips the canon consistency-check for non-fact commitments (a claim may contradict reality without raising `CanonConflictError`). `Fact` dataclass carries `epistemic_type` from its originating commitment. `_commitment_from_dict` in persistence.py round-trips the field. 207 tests pass.
+
+**D-023 resolved (design):** Shared-connection SQLite `BEGIN`/`COMMIT` per beat; `SQLiteEventLog.transaction()` context manager with shared deferred-commit flag; implementation deferred to Phase 9 when plot-graph adds a third writer to the session DB.
+
+**D-025 resolved (design):** `ResolutionPlan` pre-roll (adjudicator output: skill, TN, `action_domain`, exposure, typed consequence palette per band, `triumph_effects`) + `EffectExecutor` post-roll (validates and applies typed operations: `advance_clock`, `apply_stress`, `create_truth`, `create_access`, `create_seam`, `move_entity`, etc.). Phase 9 deliverable; narrator receives only approved player-safe result.
+
+**D-026 resolved (design):** Clock schema gains `domain`, `trigger_types`, `advance_policy`, `landing_truth`, `front_owner`, `active`, `addressed_by`; `WorldSimulator.advance(trigger)` advances only clocks matching the trigger tag; tag comes from `ResolutionPlan.action_domain`. Existing clocks default to `trigger_types={"beat"}` for backward compatibility. Phase 9 deliverable alongside D-025.
+
+---
+
+## 2026-06-18 — c.md review: B.18 fix + D-023–D-026
+
+**`gm.py` — B.18 fix (narrator must not receive hidden adjudicator reasoning):** Removed `stakes.reasoning` from the `NarratorGM` user message. The cold adjudicator produces its reasoning from the full GM world view, which may reference hidden facts. That string was being passed directly into the narrator's prompt, creating a narrow but real leak of GM-internal reasoning into the player-facing context. The narrator now receives the band name only (`Resolution: {band.value}` or `No roll needed.`) plus the player's filtered event history — which was always the correct information boundary. No tests broken; 207 still pass.
+
+**Opened D-023–D-026** following review of `uploads/c.md`:
+- **D-023** · Atomic event/state transactions — `SQLiteEventLog` and `SQLiteWorldState` write separately; divergence on partial failure is a real consistency hole. Resolve at Phase 9 start before adding plot-graph writes.
+- **D-024** · Epistemic commitment types — `Commitment` currently lacks an `epistemic_type` field; NPC claims and engine-confirmed facts are indistinguishable. Phase 9 plot manager needs this distinction to separate sealed facts from revisable plans. Options: untyped (current), optional field (recommended), or a full schema split.
+- **D-025** · Effect executor + consequence palette — Untyped `declared_facts` triples do not distinguish clock advancement from truth creation from stress application; consequences are selected post-roll rather than from a pre-declared palette. Typed operations + pre-roll palette deferred to Phase 9 rules engine expansion.
+- **D-026** · Clock trigger and domain policy — All clocks advance every beat; FABLE says clocks should advance only in their domain. Add `trigger` and `domain` fields to the clock schema; `WorldSimulator.advance(trigger)` advances only matching clocks. Resolve at Phase 9 when front-firing logic is built.
+
+---
+
+## 2026-06-18 — Phase 8: Auditor
+
+Added live integrity layer to the beat loop.
+
+- **`auditor.py`** — `AuditTier` (CRITICAL / NON_CRITICAL / ADVISORY), `AuditFlag` (tier + category + description), `AuditResult` (passed + flags + `any_blocking` property), `Auditor` class.
+- **Pre-commit hook** (`Auditor.check_commitments`): deterministic canon-contradiction detection — a revealed commitment that conflicts with the canon ledger → CRITICAL. Override passthrough via `is_override=True` bypasses all checks (D-008). Hidden commitments are not checked (not yet at the immutable boundary).
+- **Post-narration hook, step 7** (`Auditor.check_narration`): structural check (empty prose → CRITICAL) + optional semantic model call (disabled when `semantic=False` or no client; configurable via `Auditor(client=..., semantic=True, max_retries=2)`). D-019 escalation rule: model-reported contradiction with confidence ≥ 0.9 + revealed canon fact + not set via override → CRITICAL; else ADVISORY. Model failure degrades to NON_CRITICAL with retry (up to `max_retries`) — play never blocked by an API error.
+- **`BeatResult` extended**: `audit_flags: list[AuditFlag]` (full flag list for the beat), `beat_aborted: bool`.
+- **`BeatRunner` integration** (`beat.py`): `auditor` optional parameter; `_emit_audit_events` helper logs each flag as `audit_block` / `audit_warning` / `audit_advisory` event with `audience=(gm_entity,)` only — audit findings never enter any player or TM belief projection. Pre-commit critical → abort before commit step 6, no narration. Post-narration critical → abort after commit step 6, narration text available in `BeatResult` but not logged.
+- **35 new tests** (`tests/test_phase8_auditor.py`); 207 total.
+
+Decisions exercised: D-018 (tiered failure), D-019 (semantic auditing advisory-default with high-confidence escalation), D-008 (override passthrough).
+
+---
+
+## 2026-06-18 — Phase 8–11 planning; D-018–D-022; skill_rating fix; token caps
+
+**Planning:** Added Phases 8 (Auditor), 9 (Plot-manager), 10 (Disposition system), and 11 (Interface/voice goal statement) to `IMPLEMENTATION_PLAN.md`. Phase 11 detailed planning deferred until technology choices are made.
+
+**Decision log:**
+- **D-018 (Auditor failure policy) → Resolved:** Tiered failure handling — critical violations (mechanics, secrecy, canon, state integrity) abort the beat and block the narration write; non-critical model failures retry then degrade gracefully; advisory concerns are logged to GM audience only and do not interrupt play.
+- **D-019 (Semantic consistency policy) → Resolved:** Semantic auditing enabled by default, treated as advisory. Escalates to blocking only when confidence is very high, the finding threatens revealed canon, and no logged transition or override explains the change. Structural contradictions remain unconditionally blocking.
+- **D-020 (Phase 9 plot scope) → Resolved:** Phase 9 manages and advances a prepared campaign graph during play (human-authored or AI-assisted at setup). Autonomous generation of a complete campaign graph is outside Phase 9 scope.
+- **D-021 (formerly D-018) — Scene-mode companion gating:** Open, deferred post-phase-8.
+- **D-022 (formerly D-019) — Operational telemetry store:** Open, deferred to D-017 resolution.
+
+*(D-021 and D-022 were renumbered from D-018/D-019 to make room for the resolved decisions above. The phase-7 changelog entry that references the original D-018/D-019 by number reflects their content at the time; those decisions are now D-021/D-022.)*
+
+**`gm.py` — `skill_rating` determinism fix:** Removed `skill_rating` from the `adjudicate_action` tool schema. The model names the skill; `AdjudicatorGM.evaluate` looks up the rating from `CharacterSheet.skill()`. Models must not supply values the engine already owns (CORE §1.3 principle 1). `max_tokens` lowered: adjudicator 512→256, narrator 1024→400.
+
+**`character_agent.py` — token cap:** `max_tokens` lowered 512→256 for companion proposals (structured tool call, bounded output).
+
+---
+
+## 2026-06-18 — Phase 7: orchestrator / spotlight + persistence
+
+Wired multi-party turn flow and the transient proposal buffer into the existing beat loop.
+
+- **`ActionQueue`** (`orchestrator.py`) — the blackboard's transient write surface (CORE §4.3, D-010). Agents enqueue `Proposal` objects; the orchestrator drains the buffer before adjudication. Non-authoritative: a proposal becomes a logged event only after resolution and commit, so unresolved proposals never enter any belief projection.
+- **`Orchestrator`** (`orchestrator.py`) — routes turns on routing **metadata only** (presence, spotlight history, initiative order), never on event content, so it cannot become an omniscience conduit. Two modes: SPOTLIGHT (director-picks-next, least-recently-acted first, MVP default per D-005) and INITIATIVE (caller-supplied round-robin for combat). `grant_turn(present)` restricts to seats currently in scene.
+- **`BeatRunner.run_with_agent`** (`beat.py`) — runs one beat where an AI `CharacterAgent` proposes its own action from its filtered belief store (CORE principle 2). Optional `ActionQueue` transit (beat-loop step 3). Dialogue folds into the action string forwarded to adjudicator and narrator.
+- **`BeatRunner.run_round`** (`beat.py`) — runs one full round: each present seat gets exactly one beat in orchestrator-determined order. AI seats call `run_with_agent`; human seats take a `player_proposals[entity_id]` text string. Seat identity is not hardcoded (D-015 groundwork) — any entity ID can be human or AI. Orchestrator spotlight history updated after each seat.
+- **Persistence** (`persistence.py`) — `SQLiteEventLog` and `SQLiteWorldState` (drop-in subclasses; SQLite-backed; same interface, same capability enforcement). `open_session(db_path)` factory returns a shared-connection `(log, world)` pair. All existing components work unchanged. `Scene` intentionally not persisted (volatile session state); belief stores and canon ledger rebuild on read (D-001, D-009). 15 tests (`tests/test_persistence.py`).
+- **43 new tests** (`tests/test_phase7_orchestrator.py`), covering ActionQueue contract, Orchestrator SPOTLIGHT + INITIATIVE, `run_with_agent` (belief-store isolation, dialogue folding, queue transit), and `run_round` (full round, human seat, initiative ordering, D-015 seat-agnostic). **172 total** passing.
+- **Deferred:** TTS turn-gating (phase 11), auditor live gates (phase 8).
+
+---
+
+## 2026-06-18 — Phase 6: character agents
+
+Built the AI teammate layer (`persona.py`, `character_agent.py`).
+
+- **`PersonaSpec`** — per-agent identity: voice, values, public goals, hidden agenda, relationships. `hidden_agenda` is designed to travel only in the system prompt, never in shared context or user messages.
+- **`Proposal`** — seat-agnostic action/dialogue container (D-015 groundwork). Any seat — AI or human — produces a `Proposal`; `CharacterAgent` is the AI implementation. Channel validation enforced at construction (whisper requires target).
+- **`CharacterAgent`** — AI-driven seat. `propose(assembler)` reads `assembler.belief_store(self.entity_id)` — the agent sees only events it was in the audience of, structurally (CORE principle 2). Forced `propose_action` tool call via Anthropic SDK.
+- **Differential knowledge tests** verify that two agents with different audience memberships receive different event contexts, that a private commitment is in vale's beliefs but not rook's, and that the hidden agenda appears only in the system prompt.
+- **21 new tests** (`tests/test_phase6_agents.py`); 129 total.
+
+---
+
+## 2026-06-18 — Phase 5: cold/warm GM split
+
+Built the minimal playable GM loop (`character_sheet.py`, `gm.py`, `beat.py`).
+
+- **`CharacterSheet`** — mechanical truth for a character: skills (0–4), concept, edge, stress, and the remaining FABLE anatomy fields as stubs. Validated at construction; `skill(name)` returns 0 for unlisted skills.
+- **`AdjudicatorGM`** (cold) — Anthropic tool-use call forcing `adjudicate_action`. Returns a structured `StakesDecision` (stakes bool, skill, TN, declared facts). No prose output; the player never sees adjudicator output directly (D-007).
+- **`NarratorGM`** (warm) — Receives only the player's filtered belief store and the result band (not dice values). Produces prose for the public channel. Structural information barrier: it is never passed hidden world state (CORE principle 2, D-007).
+- **`WorldSimulator`** — Deterministic clock/front tick. Advances each clock by its step value; fires and logs `front_advance` events when a clock fills. Full consequence logic deferred to the plot-manager (phase 9).
+- **`BeatRunner`** — Sequences beat-loop steps 2–9 (CORE §5) for one actor. Steps deferred: 1 (route/spotlight → phase 7), 3 (action queue → phase 7), 7 (audit → phase 8). Returns `BeatResult` with resolution, narration, committed-fact count, and clocks fired.
+- **`anthropic>=0.111.0`** added as a project dependency. Model default: `claude-sonnet-4-6`. Provider-agnostic adapter deferred (D-017).
+- **23 new tests** (`tests/test_phase5_gm.py`), including an information-boundary test that verifies the narrator client is never called with dice totals or margin values. 108 total.
+
+---
+
+## 2026-06-18 — SQLite persistence (phase 1 step 6); resolved D-007, D-009; opened D-017
+
+**SQLite persistence** — added `persistence.py`: `SQLiteEventLog` (drop-in subclass of `EventLog`, SQLite-backed, in-memory read cache) and `SQLiteWorldState` (drop-in subclass of `WorldState`, write-through JSON blob). `open_session(db_path)` factory returns a shared-connection `(log, world)` pair. All existing components (`CommitPipeline`, `DiceService`, `RulesEngine`, `ContextAssembler`) work unchanged with the SQLite backends. 15 new tests (`tests/test_persistence.py`); 85 total. `Scene` is intentionally not persisted — volatile sensory state, rebuilt per session. Belief stores and canon ledger are read-time projections, no separate persistence needed (D-009 pattern). Closes the last pending item for phases 1–4.
+
+**D-007 → Resolved:** hard cold/warm architectural split. Cold GM (adjudicator) emits structured commitments via tool use only — no prose. Warm GM (narrator) receives only the player's filtered belief store and produces prose only — no commits. Tool calls go to the commit pipeline; text goes to the channel router. No extraction pass required for compliant providers. Residual risk: warm GM prose may introduce incidental detail; the auditor (phase 8) is the check. Provider: Claude tool-use API for now (see D-017).
+
+**D-009 → Resolved:** canon ledger is a pure fold over the event log — no separate authoritative store. Lazy per-POV cache is the approved performance escape hatch; it is never an authoritative writer. Consistent with D-001 and D-010.
+
+**D-017 → Opened:** LLM provider strategy. Claude/Anthropic-first for now; a provider-agnostic adapter layer (abstracting tool-use formats, context limits, streaming, per-role model defaults) is a named future goal. Cheapest moment to introduce the adapter is phase 5 (first model-calling agent).
+
+---
+
 ## 2026-06-18 — Resolved D-008 (override authority); opened D-016 (plot ownership)
 
 Settled the GM-authority philosophy before Phase 5 and recorded the plot-ownership fork it implies. No code change — both concern model behavior and the plot layer (phases 5/9); the override mechanism itself was already built in phase 2.
@@ -80,7 +613,7 @@ First code. Built the smallest working deterministic substrate; all six phase-1 
 - **Append-only log** (`event_log.py`): `EventLog.append` is the single chokepoint — it assigns the monotonic `sequence`, a uuid `id`, and a UTC `timestamp` (never caller-supplied), and stores a frozen event. Reads return tuples so history can't be mutated. `project_for(entity)` filters by audience and renders content-vs-metadata (the CORE §6.4 access matrix; non-audience entities are excluded entirely).
 - **Determinism boundary made structural** (CORE §1.3 principle 1): mechanical-outcome types (`dice_roll`, `resolution`) are refused by `append` unless they carry a module-private capability held only by the dice service and rules engine. A faked roll authored directly raises `DeterminismBoundaryError`.
 - **Dice service** (`dice.py`): logged, auditable randomness (CORE §7.2); injectable RNG for deterministic tests; every roll is a `dice_roll` event.
-- **Minimal rules engine** (`rules.py`): the cold adjudicator slice — `resolve_check` rolls 3d6+Skill vs TN via the dice service, reads the FABLE band (`fable_engine.md` §5), and logs a `resolution` event linked to its dice event via `derived_from`. Deliberately excludes Exposure/Effect/Trade/Ledger/Clocks/Edge (later phases).
+- **Minimal rules engine** (`rules.py`): the cold adjudicator slice — `resolve_check` rolls 3d6+Skill vs TN via the dice service, reads the FABLE band (`uploads/FABLE_Engine_Schema_v6.md` §5), and logs a `resolution` event linked to its dice event via `derived_from`. Deliberately excludes Exposure/Effect/Trade/Ledger/Clocks/Edge (later phases).
 - **World-state skeleton** (`world_state.py`): minimal entity container; `position` is fiction-positional (D-002).
 - Package version 0.0.0 → 0.1.0; public API exported from `__init__.py`. Implemented the 6 skipped acceptance placeholders and added `tests/test_phase1_behavior.py`.
 - **Decisions in play:** D-001 (projection is read-time over the single log), D-002 (fiction-positional `position`), and the determinism boundary. **Pending:** SQLite persistence (plan step 6) — the log is in-memory only.
@@ -109,13 +642,13 @@ Resolved the disposition→mechanics coupling fork in favor of FABLE's native ec
 
 ---
 
-## 2026-06-17 — Integrate the FABLE ruleset (`fable_engine.md`, Engine Schema v4)
+## 2026-06-17 — Integrate the FABLE ruleset (`uploads/FABLE_Engine_Schema_v6.md`)
 
 The ruleset doc was added to the repo; integrated it as canon for the rules-engine component *without implementing any of it* (phase 1 remains a minimal rules-engine interface, not FABLE's math).
 
-- Registered `fable_engine.md` in the `00_README.md` file map and referenced it from CORE §3 (rules engine), §8 (character sheet), the appendix, and the `COMPONENTS.md` rules-engine and character-sheet entries. It is authoritative for *rules mechanics*; CORE stays authoritative for *architecture*. *Why:* it was an orphan — referenced by nothing — exactly the map-drift the change protocol exists to catch.
+- Registered `uploads/FABLE_Engine_Schema_v6.md` in the `00_README.md` file map and referenced it from CORE §3 (rules engine), §8 (character sheet), the appendix, and the `COMPONENTS.md` rules-engine and character-sheet entries. It is authoritative for *rules mechanics*; CORE stays authoritative for *architecture*. *Why:* it was an orphan — referenced by nothing — exactly the map-drift the change protocol exists to catch.
 - Reconciled dead terminology: "**stance(s)**" (from an older FABLE draft) is not a v4 surface; replaced its references in CORE §3/§8/appendix and `COMPONENTS.md` (×2), and rebuilt `schemas/character_sheet.schema.json` to the actual anatomy (Concept · Skills 0–4 · Traits · Bonds · Drive · Question · Gear · Stress · Scars · Edge). The closest live analog to the old "stance" is the **Trade** (§9).
-- Anchored the **stakes gate** (CORE §3/§7.2/beat-loop step 4) to its mechanical definition: FABLE's **Exit Check** + the *no-empty-rolls* rule (`fable_engine.md` §11, §5).
+- Anchored the **stakes gate** (CORE §3/§7.2/beat-loop step 4) to its mechanical definition: FABLE's **Exit Check** + the *no-empty-rolls* rule (`uploads/FABLE_Engine_Schema_v6.md` §11, §5).
 - Added ruleset-informed notes to **D-002** (FABLE is fiction-positional — no grid; favors the abstract default) and **D-004** (FABLE's Edge+Bonds is already a spendable-leverage economy; invariant 18 likely rules out a *separate* "Strings" subsystem). Both kept **Open** — flagged for a deliberate resolution, not silently decided.
 - Precedence re-checked: nothing contradicts CORE; the ruleset and CORE govern orthogonal domains (mechanics vs. architecture).
 

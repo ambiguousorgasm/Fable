@@ -17,6 +17,13 @@ from typing import Any, Mapping, Union
 # audience but does not solely determine it.
 CHANNELS = frozenset({"public", "whisper", "ooc", "dice", "system"})
 
+# Epistemic types for commitments (D-024). Only "fact" enters the canon ledger;
+# "claim" and "observation" live in audience-scoped event history and POV
+# projections. "expired" is a tombstone that removes a prior fact from
+# committed_facts (Phase 12 typed effect executor). "Belief" and "theory" are
+# derived annotations (deferred).
+EPISTEMIC_TYPES = frozenset({"fact", "claim", "observation", "expired"})
+
 # Visibility levels: whether an audience member receives the event's content
 # or only the metadata that it happened (CORE §3).
 VISIBILITY_LEVELS = frozenset({"content", "metadata"})
@@ -48,12 +55,24 @@ class Commitment:
     value: Any
     confidence: float | None = None
     revealed: bool = False
+    epistemic_type: str = "fact"
+    # Provenance (Phase 11 / D-024): who asserted or observed this.
+    # For claims the asserting_entity is the NPC or player who made the statement;
+    # for observations the observing_entity is the POV that perceived it.
+    # Both default to None so existing call sites are unaffected.
+    asserting_entity: str | None = None
+    observing_entity: str | None = None
 
     def __post_init__(self) -> None:
         if not self.subject or not self.predicate:
             raise ValueError("commitment requires non-empty subject and predicate")
         if self.confidence is not None and not (0.0 <= self.confidence <= 1.0):
             raise ValueError("commitment confidence must be in [0, 1]")
+        if self.epistemic_type not in EPISTEMIC_TYPES:
+            raise ValueError(
+                f"epistemic_type must be one of {sorted(EPISTEMIC_TYPES)}, "
+                f"got {self.epistemic_type!r}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -61,9 +80,14 @@ class Commitment:
             "predicate": self.predicate,
             "value": self.value,
             "revealed": self.revealed,
+            "epistemic_type": self.epistemic_type,
         }
         if self.confidence is not None:
             d["confidence"] = self.confidence
+        if self.asserting_entity is not None:
+            d["asserting_entity"] = self.asserting_entity
+        if self.observing_entity is not None:
+            d["observing_entity"] = self.observing_entity
         return d
 
 

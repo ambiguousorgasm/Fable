@@ -15,6 +15,7 @@ here by `project_for`.
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from .events import (
@@ -90,6 +91,17 @@ class EventLog:
         self._events.append(event)
         self._by_id[event.id] = event
         return event
+
+    @contextmanager
+    def transaction(self):
+        """No-op transaction for the in-memory log.
+
+        The SQLiteEventLog override turns this into a real atomic SQLite
+        commit with in-memory rollback on exception. Callers (BeatRunner)
+        always use ``with self._log.transaction():`` so the same beat code
+        works with both backends.
+        """
+        yield
 
     # --- reads -----------------------------------------------------------
 

@@ -56,7 +56,9 @@ class Fact:
     Derived from the event log, not authored independently. `revealed` carries
     whether this fact has been disclosed to players (and is therefore canon);
     `via_override` records that it was committed through an override event, so
-    downstream (the auditor) can tell fiat from a bug.
+    downstream (the auditor) can tell fiat from a bug; `epistemic_type` mirrors
+    the originating commitment's type (D-024) — only "fact" enters the canon
+    ledger; "claim" and "observation" appear in committed_facts() for inspection.
     """
 
     subject: str
@@ -65,6 +67,7 @@ class Fact:
     revealed: bool
     event_id: str
     via_override: bool = False
+    epistemic_type: str = "fact"
 
     @property
     def key(self) -> tuple[str, str]:
@@ -102,32 +105,43 @@ class CanonConflictError(Exception):
 def committed_facts(events: Iterable[Event]) -> dict[tuple[str, str], Fact]:
     """Fold the event log into the current set of bound facts (CORE §6.1).
 
-    Latest commitment per (subject, predicate) wins, in append order. This is
-    safe because `commit` guards every write against the canon boundary, so a
-    later differing value for a canon key only exists if it arrived via an
-    override (intentional fiat) — never a silent contradiction.
+    Only "fact" commitments are folded; claims and observations are audience-scoped
+    history and must not overwrite objective facts (D-024). "expired" commitments
+    are tombstones that remove a prior fact from the dict (Phase 12 / ExpireTruth).
+    Latest write per (subject, predicate) wins.
     """
     facts: dict[tuple[str, str], Fact] = {}
     for event in events:
         via_override = event.type == OVERRIDE_TYPE
         for c in event.commitments:
-            facts[(c.subject, c.predicate)] = Fact(
-                subject=c.subject,
-                predicate=c.predicate,
-                value=c.value,
-                revealed=c.revealed,
-                event_id=event.id,
-                via_override=via_override,
-            )
+            if c.epistemic_type == "fact":
+                facts[(c.subject, c.predicate)] = Fact(
+                    subject=c.subject,
+                    predicate=c.predicate,
+                    value=c.value,
+                    revealed=c.revealed,
+                    event_id=event.id,
+                    via_override=via_override,
+                    epistemic_type=c.epistemic_type,
+                )
+            elif c.epistemic_type == "expired":
+                facts.pop((c.subject, c.predicate), None)
     return facts
 
 
 def canon_ledger(events: Iterable[Event]) -> dict[tuple[str, str], Fact]:
-    """The revealed subset of committed facts — the immutable boundary (CORE §8).
+    """The revealed objective-fact subset of committed state — the immutable boundary (CORE §8).
 
     A view over the event log (D-009 option (b)), not a materialized store.
+    Only commitments of epistemic_type "fact" that are revealed enter the canon
+    ledger (D-024). Claims and observations are audience-scoped history, never
+    objective world state.
     """
-    return {key: fact for key, fact in committed_facts(events).items() if fact.revealed}
+    return {
+        key: fact
+        for key, fact in committed_facts(events).items()
+        if fact.revealed and fact.epistemic_type == "fact"
+    }
 
 
 class CommitPipeline:
@@ -164,6 +178,8 @@ class CommitPipeline:
         canon = self.canon_ledger()
         conflicts: list[Conflict] = []
         for c in commitments:
+            if c.epistemic_type != "fact":
+                continue  # claims and observations may assert anything; only facts are checked
             existing = canon.get((c.subject, c.predicate))
             if existing is not None and existing.value != c.value:
                 conflicts.append(Conflict(candidate=c, existing=existing))

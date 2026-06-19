@@ -94,12 +94,20 @@ class Scene:
     def darken(self, zone: str) -> None:
         self.dark_zones.add(zone)
 
+    def illuminate(self, zone: str) -> None:
+        """Restore a darkened zone to lit."""
+        self.dark_zones.discard(zone)
+
     def lit(self, zone: str) -> bool:
         return zone not in self.dark_zones
 
     def close(self, a: str, b: str) -> None:
         """Shut the doorway between two zones (blocks sound and sight across it)."""
         self.closed_connections.add(frozenset({a, b}))
+
+    def open_connection(self, a: str, b: str) -> None:
+        """Reopen a closed connection between two zones."""
+        self.closed_connections.discard(frozenset({a, b}))
 
     def transmits(self, a: str, b: str) -> bool:
         """Whether the a<->b connection currently carries sound/sight."""
