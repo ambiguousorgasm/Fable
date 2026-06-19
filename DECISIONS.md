@@ -458,8 +458,13 @@ These are implementation defaults used until a decision is formally resolved. Th
 - **D-042** · Context budget management → `budgeter.py`: `ContextBudgetPolicy`, `ContextBudgeter`, `TokenEstimator`, `BudgetCheckResult`; per-role defaults (6 roles); `from_settings` classmethod; event windows wired into `BeatRunner._events_summary` / `_narrator_context` calls and `CharacterAgent.propose()`; `CostCeilingStatus` + `TelemetrySink.ceiling_status()` for per-session cost ceiling (advisory-only default). `SettingsRegistry.DEFAULTS` expanded with 12 budget keys. `CONTEXT_EVENT_WINDOW` kept as backward-compat fallback · 2026-06-19.
 - **D-043** · Lorebook v1 → `lorebook.py`: `LoreEntry` (frozen; `audience_permits()`), `LoreDeck` (audience-gated collection), `LoreAssembler` (keyword match against entitled corpus; `max_entries`; `lore_context_block()`). Audience gate fires before keyword match — `gm_only` entries never injected into player context regardless of corpus content (constraint 4). `ContextAssembler.lore_for()` opt-in. `CampaignPackage.lore_entries` + `lore_deck()`. `lorebook_injection_window` setting. Option A (keyword match); (B)/(C) deferred · 2026-06-19.
 
-**Open — Phase 22:**
-- (all D-017, D-042, D-043 items resolved; remaining Phase 22 work is golden transcripts, replay/fuzz tests, property tests for `EffectExecutor` atomic groups (D-037), save-format migration, security review)
+**Phase 22 — remaining open items:**
+- D-037 property tests for `EffectExecutor` atomic palette groups — property tests are built (see `test_phase22_properties.py`); true runtime `atomic_group` enforcement is deferred post-core
+- Replay correctness drills and short-session playtests — testing/verification work, not design decisions
+- Security review of reconnect/export flows — validation work; no new decision needed unless a gap is found
+- Final release hygiene and release-candidate tagging — operational, not a design fork
+
+**Open — deferred / post-core:**
 
 **Open — deferred / ongoing:**
 - **D-003** · Positioning queries → free OOC clarification for MVP; IC assessment for exploration-heavy scenes later.

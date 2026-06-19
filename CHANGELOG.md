@@ -4,6 +4,31 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — Roadmap restructure: Phase 22 final, post-core tracks, extraction track
+
+**Doc-only pass.** No code changes; 1401 tests unchanged.
+
+**`IMPLEMENTATION_PLAN.md`** rewritten from Phase 22 forward:
+- Phase 22 renamed to "Core Release Hardening and Text-Only Release Gate" and confirmed as the final numbered phase.
+- Phase 22 already-built items listed explicitly.
+- Remaining Phase 22 checklist (A): replay drills, short-session playtests, reconnect/export security review, release hygiene, release-candidate tag.
+- Section B: Post-Phase-22 Cleanup / Release Polish — no new features; substrate audit, dead-code prune, clean-clone verification, README update.
+- Section C: Post-Core / After Game Complete Backlog — image generation (D-038), voice/TTS (D-039), Campaign-Authoring Studio (D-040), multi-human play, polished GUI, semantic lorebook, advanced settings, NPC-manager, agent bidding, richer perception.
+- Section D: Final Extraction Track — general multi-agent orchestration architecture; framed as "agents propose; deterministic systems dispose"; candidate reusable components; non-TTRPG use cases; explicitly last after cleanup.
+- Rule gap audit table: each v6 mechanic classified as Built, Stale note corrected, or Deferred post-core. No missing mechanics are core release blockers.
+
+**`STATUS.md`** targeted corrections:
+- §13 Edge spend mechanic side: corrected from "Missing" to "Built" (Phase 21 Lean/Push/Shield).
+- §14 breather-clear: updated from "Phase 22" to "Deferred post-core" with `ChangeResource` workaround.
+- §14–§23 coverage table: remaining "Phase 22" targets updated to "deferred post-core" with decision references.
+- "Key gaps before live play" note updated — no core blockers remaining.
+- CORE §13 validation table: stale phase references corrected; Phases 8/18 noted as built; D-042 budget noted.
+- Phase 22 row renamed.
+
+**`DECISIONS.md`** — "Open — Phase 22" section updated; remaining work is testing/verification, not design forks.
+
+---
+
 ## 2026-06-19 — Phase 22: property, security, and schema tests + rule-gap decision audit (1401 tests)
 
 **`tests/test_phase22_properties.py`** — 39 property/invariant tests covering the five CORE principles:
