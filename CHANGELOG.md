@@ -4,6 +4,19 @@ Append-only history of meaningful changes to the design and the build. Newest fi
 
 ---
 
+## 2026-06-19 — public/README.md and public/docs/setup.md: beta content pass
+
+**`public/README.md`** rewritten for completeness:
+- Added explicit "Built systems" list covering all 17 shipped components — previously only principle bullets, no shipped-feature inventory.
+- Added "Current status" section: Phase 22 complete, remaining work noted, not-yet-stable disclaimer.
+- Added provider qualifier: Anthropic is the current live provider; adapter boundary and per-role routing exist; non-Anthropic adapters not yet implemented.
+- Added `bash scripts/setup.sh` as primary setup path alongside manual fallback.
+- Added test mock disclosure: "No API key is required to run the suite."
+
+**`public/docs/setup.md`** — same provider qualifier added to Prerequisites; `bash scripts/setup.sh` added as primary install path.
+
+---
+
 ## 2026-06-19 — Public release hygiene: setup script, README rewrite, personal-path audit
 
 **`scripts/setup.sh`** — new bootstrap script. Checks Python 3.11+, creates `.venv` if missing, runs `pip install -e ".[dev]"`, copies `.env.example` to `.env`, prints next-step instructions. Executable; no external dependencies.

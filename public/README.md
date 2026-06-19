@@ -1,32 +1,57 @@
 # FABLE Table Engine
 
-A text-based AI-facilitated tabletop RPG engine for one human player. Runs a complete session with an AI Game Master, AI teammates, deterministic rules and world state, differential information, and per-character channels — entirely through Python and an Anthropic API key.
+A text-first AI tabletop RPG engine for one human player, an AI Game Master, and optional AI companion characters.
 
-## What it does
+**Code owns truth; models own voice.** Models may propose, narrate, and roleplay, but deterministic code owns rules, dice, state, visibility, persistence, and canon.
 
-**Code owns truth; models own voice.**
+## Built systems
 
-- **Deterministic core.** Dice rolls, rules resolution, world state mutations, and the event log are handled by plain Python — not language models. Models never decide outcomes.
-- **Differential knowledge.** Each participant (player, AI GM, AI teammates) sees only the events and facts they are entitled to. Secrets are enforced structurally, not by asking models to "pretend not to know."
-- **Split GM.** The adjudicator (cold) decides what is at stake and emits structured outcomes. The narrator (warm) writes prose — and never sees the dice.
-- **Append-only event log.** Every action, dice roll, adjudication, committed fact, and narration is logged. World state and belief stores are derived views over the log.
-- **Persistent sessions.** Sessions save to SQLite and resume across restarts with automatic schema migration.
-- **Cost-bounded.** Per-role context windows, token estimation, and per-session cost ceilings are built in.
+- Append-only event log
+- Deterministic dice and rules substrate
+- Audience and visibility filtering (differential knowledge)
+- Per-character belief and context projection
+- Cold adjudicator / warm narrator split
+- Character agents with per-POV context
+- Orchestrator and scene cadence
+- Auditor (pre-commit and post-narration)
+- Typed effect executor
+- Campaign package loading
+- Plot graph and disposition systems
+- Text play interface
+- Settings and per-role model routing
+- Context budgeting and cost tracking
+- Lorebook and world-info injection
+- Save/resume with automatic schema migration
+- Golden transcript regression tests
+
+## Current status
+
+Core systems are complete through Phase 22 (release hardening). Remaining work is replay/property tests, security review, portability checks, and playtesting. Not yet stable for production use.
 
 ## Requirements
 
 - Python 3.11 or higher
-- An [Anthropic API key](https://console.anthropic.com/)
+- An Anthropic API key for live sessions
+
+The current live model provider is Anthropic. The engine has a provider-adapter boundary and per-role model routing, but non-Anthropic provider adapters are not implemented yet.
 
 ## Quick setup
 
 ```sh
 git clone <repo-url> fable-table-engine
 cd fable-table-engine
+bash scripts/setup.sh
+```
+
+Or manually:
+
+```sh
 python3 -m venv .venv
 ./.venv/bin/pip install -e ".[dev]"
-cp .env.example .env          # then add your ANTHROPIC_API_KEY
+cp .env.example .env
 ```
+
+Then add your `ANTHROPIC_API_KEY` to `.env`.
 
 ## Run the tests
 
@@ -34,7 +59,7 @@ cp .env.example .env          # then add your ANTHROPIC_API_KEY
 ./.venv/bin/python -m pytest -q
 ```
 
-All tests should pass.
+All tests use mocked model calls. No API key is required to run the suite.
 
 ## Documentation
 

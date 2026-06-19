@@ -3,13 +3,21 @@
 ## Prerequisites
 
 - Python 3.11 or higher
-- An Anthropic API key — get one at [console.anthropic.com](https://console.anthropic.com/)
+- An Anthropic API key for live sessions — get one at [console.anthropic.com](https://console.anthropic.com/)
+
+The current live model provider is Anthropic. The engine has a provider-adapter boundary and per-role model routing, but non-Anthropic provider adapters are not implemented yet.
 
 ## Install
 
 ```sh
 git clone <repo-url> fable-table-engine
 cd fable-table-engine
+bash scripts/setup.sh
+```
+
+Or manually:
+
+```sh
 python3 -m venv .venv
 ./.venv/bin/pip install -e ".[dev]"
 ```
