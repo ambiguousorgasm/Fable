@@ -39,6 +39,7 @@ from fable_table_engine import (
     NarratorGM,
     RulesEngine,
     StakesDecision,
+    ToolOutputError,
     WorldSimulator,
     WorldState,
 )
@@ -176,7 +177,7 @@ class TestAdjudicatorGM:
         client.messages.create.return_value = response
         adj = AdjudicatorGM(ModelGateway(client))
         sheet = CharacterSheet(entity_id="rook", concept="Blade")
-        with pytest.raises(RuntimeError, match="adjudicate_action"):
+        with pytest.raises(ToolOutputError, match="adjudicate_action"):
             adj.evaluate("do something", sheet, "...", "...")
 
 

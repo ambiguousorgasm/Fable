@@ -364,15 +364,9 @@ class TestSocialInterpreter:
     def _gateway_returning(self, *blocks) -> ModelGateway:
         resp = _fake_response(*blocks)
         client = MagicMock()
-        client.messages = MagicMock()
         client.messages.create = MagicMock(return_value=resp)
         sink = TelemetrySink()
-        gw = ModelGateway.__new__(ModelGateway)
-        gw._client = client
-        gw.sink = sink
-        gw.timeout_secs = None
-        gw.max_retries = 0
-        return gw
+        return ModelGateway(client, sink=sink, timeout_secs=None, max_retries=0)
 
     def _make_event(self) -> object:
         log = EventLog()
