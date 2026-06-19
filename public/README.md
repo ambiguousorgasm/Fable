@@ -66,10 +66,16 @@ All tests use mocked model calls. No API key is required to run the suite.
 After setup, add your Anthropic API key to `.env`, then run:
 
 ```sh
+./.venv/bin/fable-web
+```
+
+This opens the local browser GUI. For the terminal runner, use:
+
+```sh
 ./.venv/bin/fable-play
 ```
 
-The current runner supports one human player, new/resumed SQLite sessions, text input, `/save`, `/history`, `/status`, `/settings`, and `/quit`.
+The current beta supports one human player, new/resumed SQLite sessions, text input, status/settings/history views, and local access to the rules PDF.
 
 ## Documentation
 

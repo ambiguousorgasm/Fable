@@ -51,10 +51,16 @@ All tests should pass without a live API key — tests mock all model calls.
 After adding `ANTHROPIC_API_KEY` to `.env`, run:
 
 ```sh
+./.venv/bin/fable-web
+```
+
+This starts the local browser GUI. If you prefer the terminal runner, use:
+
+```sh
 ./.venv/bin/fable-play
 ```
 
-At the home screen, use:
+In either interface, start a blank session with:
 
 ```text
 new

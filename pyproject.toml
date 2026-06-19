@@ -7,6 +7,7 @@ dependencies = ["anthropic>=0.111.0"]
 
 [project.scripts]
 fable-play = "fable_table_engine.cli:main"
+fable-web = "fable_table_engine.web:main"
 
 [project.optional-dependencies]
 dev = [
