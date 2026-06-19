@@ -322,6 +322,82 @@ class TestPlayInterfaceRenderStatus:
 
 
 # --------------------------------------------------------------------------- #
+# PlayInterface — cost ceiling in render_status                                  #
+# --------------------------------------------------------------------------- #
+
+class TestPlayInterfaceCostCeiling:
+
+    def _make_interface(self, world=None, cost_ceiling_usd=None):
+        from fable_table_engine.provider import TelemetrySink
+        session, _, _, _ = _make_session()
+        settings = SettingsManager("/nonexistent")
+        sink = TelemetrySink(cost_ceiling_usd=cost_ceiling_usd)
+        return PlayInterface(session, settings, world=world, sink=sink), sink
+
+    def test_no_sink_no_cost_display(self):
+        session, _, _, _ = _make_session()
+        settings = SettingsManager("/nonexistent")
+        iface = PlayInterface(session, settings, world=WorldState())
+        assert "cost" not in iface.render_status()
+
+    def test_ok_status_no_display(self):
+        iface, sink = self._make_interface(world=WorldState(), cost_ceiling_usd=1.00)
+        assert "cost" not in iface.render_status()
+
+    def test_warning_appears_at_80_percent(self):
+        from fable_table_engine.provider import CallRecord
+        iface, sink = self._make_interface(world=WorldState(), cost_ceiling_usd=1.00)
+        sink.records.append(CallRecord(role="gm", model="x", input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost_usd=0.80, latency_ms=0))
+        assert "[cost: WARNING]" in iface.render_status()
+
+    def test_exceeded_appears_at_100_percent(self):
+        from fable_table_engine.provider import CallRecord
+        iface, sink = self._make_interface(world=WorldState(), cost_ceiling_usd=1.00)
+        sink.records.append(CallRecord(role="gm", model="x", input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost_usd=1.00, latency_ms=0))
+        assert "[cost: EXCEEDED]" in iface.render_status()
+
+    def test_warning_appended_to_time_anchor(self):
+        from fable_table_engine.provider import CallRecord
+        world = WorldState()
+        iface, sink = self._make_interface(world=world, cost_ceiling_usd=1.00)
+        sink.records.append(CallRecord(role="gm", model="x", input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost_usd=0.85, latency_ms=0))
+        status = iface.render_status()
+        assert "beat:0" in status
+        assert "[cost: WARNING]" in status
+
+    def test_warning_visible_even_without_world(self):
+        from fable_table_engine.provider import CallRecord
+        iface, sink = self._make_interface(world=None, cost_ceiling_usd=1.00)
+        sink.records.append(CallRecord(role="gm", model="x", input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost_usd=0.90, latency_ms=0))
+        assert "[cost: WARNING]" in iface.render_status()
+
+    def test_no_ceiling_configured_no_display(self):
+        from fable_table_engine.provider import CallRecord
+        iface, sink = self._make_interface(world=WorldState(), cost_ceiling_usd=None)
+        sink.records.append(CallRecord(role="gm", model="x", input_tokens=0, output_tokens=0, cache_read_tokens=0, cache_write_tokens=0, cost_usd=999.0, latency_ms=0))
+        assert "cost" not in iface.render_status()
+
+    def test_build_play_interface_accepts_sink(self):
+        from fable_table_engine.provider import TelemetrySink
+        from fable_table_engine.perception import Scene
+        with tempfile.TemporaryDirectory() as tmp:
+            log = EventLog()
+            world = WorldState()
+            world.add_zone("hall")
+            world.add_entity(Entity(id="hero", kind="pc", name="Hero"))
+            world.place("hero", "hall")
+            scene = Scene(world)
+            adj, narr = _make_mocked_gm_pair()
+            settings = SettingsManager(tmp)
+            sink = TelemetrySink(cost_ceiling_usd=10.0)
+            iface = build_play_interface(
+                log, world, scene, "hero", adj, narr, settings, sink=sink
+            )
+            assert isinstance(iface, PlayInterface)
+            assert "cost" not in iface.render_status()
+
+
+# --------------------------------------------------------------------------- #
 # PlayInterface — render_settings                                                #
 # --------------------------------------------------------------------------- #
 

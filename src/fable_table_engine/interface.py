@@ -16,6 +16,7 @@ from .persistence import SessionManifest, SessionManager
 from .settings import SettingsManager, SettingsRegistry
 
 if TYPE_CHECKING:
+    from .provider import TelemetrySink
     from .world_state import WorldState
 
 
@@ -113,6 +114,10 @@ class PlayInterface:
         Used for per-campaign settings layer lookup. None means user-level only.
     world:
         Optional WorldState for render_status(). None means status is blank.
+    sink:
+        Optional TelemetrySink for cost-ceiling status in render_status().
+        When the ceiling is at WARNING or EXCEEDED, render_status() appends a
+        [cost: WARNING] or [cost: EXCEEDED] indicator. None means no cost display.
     """
 
     def __init__(
@@ -122,12 +127,14 @@ class PlayInterface:
         roster: list[str] | tuple[str, ...] = (),
         campaign_id: str | None = None,
         world: WorldState | None = None,
+        sink: TelemetrySink | None = None,
     ) -> None:
         self._session = session
         self._settings = settings
         self._roster = list(roster)
         self._campaign_id = campaign_id
         self._world = world
+        self._sink = sink
 
     @property
     def player_id(self) -> str:
@@ -146,16 +153,25 @@ class PlayInterface:
         return self._session.export_transcript()
 
     def render_status(self) -> str:
-        """Format time-anchor status as a display string.
+        """Format time-anchor + cost-ceiling status as a display string.
 
-        Returns an empty string when no WorldState was provided.
+        Returns an empty string when neither WorldState nor a cost alert is
+        present. Appends [cost: WARNING] or [cost: EXCEEDED] whenever the
+        TelemetrySink ceiling is breached.
         """
-        if self._world is None:
-            return ""
-        w = self._world
-        parts = [f"scene:{w.scene_phase}", f"beat:{w.beat_index}"]
-        if w.prose_time_label:
-            parts.append(w.prose_time_label)
+        parts: list[str] = []
+        if self._world is not None:
+            w = self._world
+            parts = [f"scene:{w.scene_phase}", f"beat:{w.beat_index}"]
+            if w.prose_time_label:
+                parts.append(w.prose_time_label)
+        if self._sink is not None:
+            from .provider import CostCeilingStatus
+            cs = self._sink.ceiling_status()
+            if cs == CostCeilingStatus.EXCEEDED:
+                parts.append("[cost: EXCEEDED]")
+            elif cs == CostCeilingStatus.WARNING:
+                parts.append("[cost: WARNING]")
         return "  ".join(parts)
 
     def render_settings(self) -> str:
@@ -219,6 +235,7 @@ def build_play_interface(
     plot_manager=None,
     budgeter=None,
     lore_assembler=None,
+    sink=None,
 ) -> PlayInterface:
     """Wire engine components into a ready-to-use PlayInterface.
 
@@ -236,6 +253,7 @@ def build_play_interface(
       plot_manager  -- PlotManager for front/clock interest signals
       budgeter      -- ContextBudgeter for per-role token budgets
       lore_assembler -- LoreAssembler for lorebook keyword injection
+      sink          -- TelemetrySink for cost-ceiling display in render_status()
     """
     from .access import CommitPipeline
     from .beat import BeatRunner
@@ -264,5 +282,5 @@ def build_play_interface(
     )
     session = PlaytestSession(runner, assembler, player_id)
     return PlayInterface(
-        session, settings, roster=roster, campaign_id=campaign_id, world=world
+        session, settings, roster=roster, campaign_id=campaign_id, world=world, sink=sink
     )

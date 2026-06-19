@@ -476,6 +476,8 @@ class BeatRunner:
         )
         gm_events = _events_summary(gm_store, limit=_adj_window)
         narrator_ctx = _narrator_context(player_store, scope.channel, limit=_nar_window)
+        gm_lore = self._assembler.lore_block(gm_store, self._gm)
+        player_lore = self._assembler.lore_block(player_store, actor)
 
         # Step 4: stakes gate (D-027: adjudicating state).
         # ModelCallError / ToolOutputError here exit before any state is written;
@@ -487,6 +489,7 @@ class BeatRunner:
                 actor_sheet=sheet,
                 world_summary=world_summary,
                 recent_events=gm_events,
+                lore_context=gm_lore,
             )
         except (ModelCallError, ToolOutputError):
             self._emit_lifecycle(ActionLifecycleState.FAILED, _all_present)
@@ -764,6 +767,7 @@ class BeatRunner:
                     player_context=narrator_ctx,
                     effective_effect=effective_effect,
                     applied_summary=applied_summary,
+                    lore_context=player_lore,
                 )
 
                 # Post-narration audit (step 7, hook 2).

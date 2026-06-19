@@ -164,6 +164,20 @@ class ContextAssembler:
             return []
         return self._lore_assembler.matching(store, pov)
 
+    def lore_block(self, store: BeliefStore, pov: str) -> str:
+        """Return a formatted lorebook context block for prompt injection.
+
+        Combines lore_for() + LoreAssembler.lore_context_block() in one step.
+        Returns an empty string when no LoreAssembler is configured or when no
+        entries match — callers can inject this directly without checking.
+        """
+        if self._lore_assembler is None:
+            return ""
+        entries = self._lore_assembler.matching(store, pov)
+        if not entries:
+            return ""
+        return self._lore_assembler.lore_context_block(entries)
+
     def _fold_epistemic(
         self,
         events: tuple[ProjectedEvent, ...],

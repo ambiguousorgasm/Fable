@@ -320,6 +320,7 @@ class AdjudicatorGM:
         actor_sheet: CharacterSheet,
         world_summary: str,
         recent_events: str,
+        lore_context: str = "",
     ) -> ResolutionPlan:
         """Evaluate `action` and return a structured resolution plan.
 
@@ -332,9 +333,11 @@ class AdjudicatorGM:
             f"Skills: {actor_sheet.skills or '(none listed — all 0)'}\n"
             f"Edge: {actor_sheet.edge}  Stress: {actor_sheet.stress}\n\n"
             f"World state:\n{world_summary}\n\n"
-            f"Recent events:\n{recent_events}\n\n"
-            f"Declared action: {action}"
+            f"Recent events:\n{recent_events}\n"
         )
+        if lore_context:
+            user_content += f"\n{lore_context}\n"
+        user_content += f"\nDeclared action: {action}"
         call_kwargs = dict(
             model=self._model,
             max_tokens=512,
@@ -435,6 +438,7 @@ class NarratorGM:
         player_context: str,
         effective_effect: str = "Standard",
         applied_summary: str | None = None,
+        lore_context: str = "",
     ) -> str:
         """Return prose narration for the player.
 
@@ -444,13 +448,18 @@ class NarratorGM:
         `applied_summary` is a brief plain-English summary of mechanical
         consequences applied; the narrator should weave these into the fiction
         without naming them as game mechanics.
+        `lore_context` is an optional lorebook block injected before player
+        context so the narrator has relevant background without GM reasoning.
         """
         if band is not None:
             result_line = f"Resolution: {band.value} — Effect quality: {effective_effect}"
         else:
             result_line = "No roll needed."
 
-        parts = [
+        parts = []
+        if lore_context:
+            parts.append(lore_context)
+        parts += [
             f"What the player knows:\n{player_context}",
             f"Declared action: {action}",
             result_line,

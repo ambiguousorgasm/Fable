@@ -162,8 +162,13 @@ def _build_user_message(
     persona: PersonaSpec,
     events_summary: str,
     scene_summary: str,
+    lore_context: str = "",
 ) -> str:
     parts = []
+
+    if lore_context:
+        parts.append(lore_context)
+        parts.append("")
 
     if persona.relationships:
         parts.append("Your read on the people here:")
@@ -261,6 +266,7 @@ class CharacterAgent:
             self._persona,
             events_summary=_events_summary(store, limit=event_limit),
             scene_summary=_scene_summary(store),
+            lore_context=assembler.lore_block(store, self._persona.entity_id),
         )
 
         response = self._gateway.call(
