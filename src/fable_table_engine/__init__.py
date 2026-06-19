@@ -1,8 +1,7 @@
 """FABLE Table Engine — AI-facilitated tabletop RPG table engine.
 
-Public surface through phase 3 (deterministic core + event log, access/commit
-boundary, perception model). Read CLAUDE.md and the CORE blueprint
-(FABLE_Table_Engine_Blueprint.md) before adding modules.
+The package exposes deterministic rules/state machinery, access-controlled
+event projection, model-call routing, persistence, and text-session interfaces.
 """
 
 from .auditor import AuditFlag, AuditResult, AuditTier, Auditor

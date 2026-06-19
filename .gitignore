@@ -33,8 +33,20 @@ config/credentials.json
 *.key
 *.token
 
-# Local Claude Code settings
-.claude/settings.local.json
+# Local agent / MCP tooling
+.claude/
+.mcp.json
+CLAUDE.md
+docs/MCP_SETUP.md
+
+# Internal development docs
+00_README.md
+FABLE_Table_Engine_Blueprint.md
+IMPLEMENTATION_PLAN.md
+DECISIONS.md
+COMPONENTS.md
+STATUS.md
+CHANGELOG.md
 
 # Working/internal directories — never publish
 uploads/

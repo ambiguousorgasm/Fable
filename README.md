@@ -32,7 +32,9 @@ All tests mock model calls — no API key required to run the suite.
 
 ## Current status
 
-Phase 22 (core release hardening) is complete. The deterministic substrate, event log, access model, perception model, context assembly, GM split, character agents, orchestrator, auditor, plot manager, and persistence layer are all built and tested. See `STATUS.md` for the full build-vs-design state.
+The deterministic substrate, event log, access model, perception model, context assembly, GM split, character agents, orchestrator, auditor, plot manager, persistence layer, save migration, context budgeting, cost telemetry, and lorebook injection are built and tested.
+
+The current public build is a late text-only beta candidate. It is intended for developer review and early testing, not polished end-user play.
 
 ## Secrets policy
 
@@ -51,15 +53,7 @@ scripts/                    Dev tooling (setup, public tree builder)
 public/                     Public-facing README and docs
 ```
 
-## Development reference
+## Documentation
 
-Internal docs for contributors:
-
-- `00_README.md` — project map, precedence rules, and change protocol
-- `FABLE_Table_Engine_Blueprint.md` — CORE architecture and design authority
-- `CLAUDE.md` — Claude Code operating instructions
-- `STATUS.md` — current design-vs-build state
-- `IMPLEMENTATION_PLAN.md` — roadmap and next steps
-- `COMPONENTS.md` — component registry and dependency impact map
-- `DECISIONS.md` — open/resolved design decisions and MVP defaults
-- `CHANGELOG.md` — append-only history of meaningful changes
+- `public/docs/setup.md` — detailed setup and configuration
+- `public/docs/architecture.md` — system design overview
