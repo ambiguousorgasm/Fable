@@ -30,6 +30,22 @@ cp .env.example .env            # add ANTHROPIC_API_KEY
 
 All tests mock model calls — no API key required to run the suite.
 
+## Run a text session
+
+After setup, add your Anthropic API key to `.env`, then run:
+
+```sh
+./.venv/bin/fable-play
+```
+
+You can also run the terminal beta with:
+
+```sh
+./.venv/bin/python -m fable_table_engine
+```
+
+The current runner supports one human player, new/resumed SQLite sessions, text input, `/save`, `/history`, `/status`, `/settings`, and `/quit`.
+
 ## Current status
 
 The deterministic substrate, event log, access model, perception model, context assembly, GM split, character agents, orchestrator, auditor, plot manager, persistence layer, save migration, context budgeting, cost telemetry, and lorebook injection are built and tested.

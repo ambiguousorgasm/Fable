@@ -46,6 +46,28 @@ The engine reads `ANTHROPIC_API_KEY` from the environment at runtime. The `.env`
 
 All tests should pass without a live API key — tests mock all model calls.
 
+## Start a text session
+
+After adding `ANTHROPIC_API_KEY` to `.env`, run:
+
+```sh
+./.venv/bin/fable-play
+```
+
+At the home screen, use:
+
+```text
+new
+```
+
+to start a blank session, or:
+
+```text
+resume 1
+```
+
+to resume the first saved session.
+
 ## Configuration
 
 The engine ships with built-in defaults for every setting. Zero configuration is needed to run tests.

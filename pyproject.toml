@@ -5,6 +5,9 @@ description = "AI-facilitated FABLE tabletop RPG table engine"
 requires-python = ">=3.11"
 dependencies = ["anthropic>=0.111.0"]
 
+[project.scripts]
+fable-play = "fable_table_engine.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",

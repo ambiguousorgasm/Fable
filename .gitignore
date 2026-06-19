@@ -60,6 +60,7 @@ image_prompts/
 logs/
 transcripts/
 runtime/
+sessions/
 
 # OS/editor
 .DS_Store

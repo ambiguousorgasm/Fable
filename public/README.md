@@ -61,6 +61,16 @@ Then add your `ANTHROPIC_API_KEY` to `.env`.
 
 All tests use mocked model calls. No API key is required to run the suite.
 
+## Run a text session
+
+After setup, add your Anthropic API key to `.env`, then run:
+
+```sh
+./.venv/bin/fable-play
+```
+
+The current runner supports one human player, new/resumed SQLite sessions, text input, `/save`, `/history`, `/status`, `/settings`, and `/quit`.
+
 ## Documentation
 
 - [`docs/setup.md`](docs/setup.md) — detailed setup and configuration
